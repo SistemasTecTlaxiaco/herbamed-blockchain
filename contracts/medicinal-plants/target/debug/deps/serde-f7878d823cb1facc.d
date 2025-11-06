@@ -1,0 +1,14 @@
+/home/ricardo1/herbamed-blockchain/contracts/medicinal-plants/target/debug/deps/serde-f7878d823cb1facc.d: /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/ricardo1/herbamed-blockchain/contracts/medicinal-plants/target/debug/build/serde-e59866aa333d97d3/out/private.rs
+
+/home/ricardo1/herbamed-blockchain/contracts/medicinal-plants/target/debug/deps/libserde-f7878d823cb1facc.rlib: /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/ricardo1/herbamed-blockchain/contracts/medicinal-plants/target/debug/build/serde-e59866aa333d97d3/out/private.rs
+
+/home/ricardo1/herbamed-blockchain/contracts/medicinal-plants/target/debug/deps/libserde-f7878d823cb1facc.rmeta: /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/ricardo1/herbamed-blockchain/contracts/medicinal-plants/target/debug/build/serde-e59866aa333d97d3/out/private.rs
+
+/home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/home/ricardo1/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/home/ricardo1/herbamed-blockchain/contracts/medicinal-plants/target/debug/build/serde-e59866aa333d97d3/out/private.rs:
+
+# env-dep:OUT_DIR=/home/ricardo1/herbamed-blockchain/contracts/medicinal-plants/target/debug/build/serde-e59866aa333d97d3/out
