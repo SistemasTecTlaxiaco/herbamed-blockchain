@@ -4,7 +4,7 @@ import PlantRegistration from '../views/plants/PlantRegistration.vue'
 import ValidatorDashboard from '../views/validators/ValidatorDashboard.vue'
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHistory('/'),
   routes: [
     {
       path: '/',

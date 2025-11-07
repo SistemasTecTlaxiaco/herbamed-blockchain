@@ -1,40 +1,38 @@
-&lt;template>
-  &lt;div class="container mt-4">
-    <template>
-      <div class="container mt-4">
-        <h2>Validación de Plantas</h2>
-        <div class="row mt-4">
-          <div class="col-md-6 mb-4" v-for="plant in pendingPlants" :key="plant.id">
-            <div class="card">
-              <div class="card-body">
-                <h5 class="card-title">{{ plant.name }}</h5>
-                <h6 class="card-subtitle mb-2 text-muted">{{ plant.scientificName }}</h6>
-                <div class="card-text">
-                  <strong>Propiedades:</strong>
-                  <ul>
-                    <li v-for="(property, index) in plant.properties" :key="index">
-                      {{ property }}
-                    </li>
-                  </ul>
-                </div>
-                <div class="mt-3">
-                  <button 
-                    class="btn btn-success me-2" 
-                    @click="votePlant(plant.id)"
-                    :disabled="plant.hasVoted || voting"
-                  >
-                    {{ plant.hasVoted ? 'Votado' : 'Votar para validar' }}
-                  </button>
-                  <span class="badge bg-info">
-                    Votos: {{ plant.votes || 0 }}
-                  </span>
-                </div>
-              </div>
+<template>
+  <div class="container mt-4">
+    <h2>Validación de Plantas</h2>
+    <div class="row mt-4">
+      <div class="col-md-6 mb-4" v-for="plant in pendingPlants" :key="plant.id">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">{{ plant.name }}</h5>
+            <h6 class="card-subtitle mb-2 text-muted">{{ plant.scientificName }}</h6>
+            <div class="card-text">
+              <strong>Propiedades:</strong>
+              <ul>
+                <li v-for="(property, index) in plant.properties" :key="index">
+                  {{ property }}
+                </li>
+              </ul>
+            </div>
+            <div class="mt-3">
+              <button 
+                class="btn btn-success me-2" 
+                @click="votePlant(plant.id)"
+                :disabled="plant.hasVoted || voting"
+              >
+                {{ plant.hasVoted ? 'Votado' : 'Votar para validar' }}
+              </button>
+              <span class="badge bg-info">
+                Votos: {{ plant.votes || 0 }}
+              </span>
             </div>
           </div>
         </div>
       </div>
-    </template>
+    </div>
+  </div>
+</template>
 
     <script>
     import soroban from '../../soroban/client'
