@@ -11,14 +11,18 @@ export default defineConfig({
     }
   },
   server: {
+    host: '127.0.0.1',
     port: 3000,
-    strictPort: true,
-    host: true
+    strictPort: false,
+    cors: true,
+    watch: {
+      usePolling: true
+    }
   },
   preview: {
     port: 3000,
-    strictPort: true,
-    host: true
+    strictPort: false,
+    host: '127.0.0.1'
   },
   define: {
     'process.env': {}
