@@ -17,6 +17,9 @@
             <li class="nav-item">
               <router-link class="nav-link" to="/validator">Validadores</router-link>
             </li>
+            <li class="nav-item">
+              <router-link class="nav-link" to="/login">Conectar Wallet</router-link>
+            </li>
           </ul>
         </div>
       </div>

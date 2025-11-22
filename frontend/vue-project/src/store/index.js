@@ -3,9 +3,13 @@ import { createStore } from 'vuex'
 export default createStore({
   state: {
     plants: [],
-    validators: []
+    validators: [],
+    publicKey: null
   },
   mutations: {
+    SET_PUBLIC_KEY(state, pk) {
+      state.publicKey = pk
+    },
     SET_PLANTS(state, plants) {
       state.plants = plants
     },

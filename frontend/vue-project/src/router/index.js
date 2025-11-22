@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 import PlantList from '../views/plants/PlantList.vue'
 import PlantRegistration from '../views/plants/PlantRegistration.vue'
 import ValidatorDashboard from '../views/validators/ValidatorDashboard.vue'
+import TestFunctions from '../views/plants/TestFunctions.vue'
+import Login from '../components/Login.vue'
 
 const router = createRouter({
   history: createWebHistory('/'),
@@ -9,6 +11,16 @@ const router = createRouter({
     {
       path: '/',
       redirect: '/plants'
+    },
+    {
+      path: '/test',
+      name: 'test-functions',
+      component: TestFunctions
+    },
+    {
+      path: '/login',
+      name: 'login',
+      component: Login
     },
     {
       path: '/plants',

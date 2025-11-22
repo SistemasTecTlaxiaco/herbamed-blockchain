@@ -148,20 +148,28 @@ impl MedicinalPlantsContract {
         env.storage().instance().set(&DataKey::Listing(plant_id), &listing);
     }
 
-    /// Buy a listed plant (this example does not transfer tokens; it just marks the listing sold)
-    pub fn buy_listing(env: &Env, plant_id: String, _buyer: Address) -> bool {
-    // Authorization is handled by the contract macro
+    /// Transfer tokens between two addresses (placeholder implementation)
+    pub fn transfer_tokens(env: &Env, from: Address, to: Address, amount: i128) -> Result<(), MedicinalPlantsError> {
+        // Aquí se implementaría la lógica de transferencia de tokens
+        // Por ejemplo, verificando saldos y actualizando el almacenamiento
+        Ok(())
+    }
 
+    /// Mejorar la función de compra para incluir transferencia de tokens
+    pub fn buy_listing(env: &Env, plant_id: String, buyer: Address) -> Result<bool, MedicinalPlantsError> {
         if let Some(mut listing) = env.storage().instance().get::<_, Listing>(&DataKey::Listing(plant_id.clone())) {
             if !listing.available {
-                return false;
+                return Err(MedicinalPlantsError::NotAvailable);
             }
+            
+            // Simular transferencia de tokens (reemplazar con lógica real)
+            Self::transfer_tokens(env, buyer.clone(), listing.seller.clone(), listing.price)?;
+
             listing.available = false;
-            // In a real implementation we would transfer funds here
             env.storage().instance().set(&DataKey::Listing(plant_id), &listing);
-            return true;
+            return Ok(true);
         }
-        false
+        Err(MedicinalPlantsError::NotAvailable)
     }
 }
 
