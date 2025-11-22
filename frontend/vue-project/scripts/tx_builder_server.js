@@ -71,5 +71,47 @@ app.post('/build_tx', async (req, res) => {
   }
 })
 
+// Endpoint para construir una invocación real (si la librería lo soporta)
+app.post('/build_invoke', async (req, res) => {
+  try {
+    const { contractId, method, args = [], publicKey, sequence, network = 'testnet' } = req.body
+    if (!publicKey) return res.status(400).json({ error: 'publicKey is required' })
+    const networkPassphrase = network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC
+
+    // Obtener sequence si no se pasa
+    let seq = sequence
+    if (!seq) {
+      const horizonUrl = network === 'testnet' ? 'https://horizon-testnet.stellar.org' : 'https://horizon.stellar.org'
+      const accRes = await fetch(`${horizonUrl}/accounts/${publicKey}`)
+      if (!accRes.ok) return res.status(400).json({ error: 'Unable to fetch account from Horizon', status: accRes.status })
+      const accJson = await accRes.json()
+      seq = accJson.sequence
+    }
+
+    const account = new Account(publicKey, seq.toString())
+    const txBuilder = new TransactionBuilder(account, { fee: '100', networkPassphrase }).setTimeout(30)
+
+    // Si Operation.invokeHostFunction está disponible en esta versión del SDK, úsala
+    if (Operation && typeof Operation.invokeHostFunction === 'function') {
+      // Construir args como strings ScVal por ahora
+      const opArgs = args.map(a => ({ type: 'string', value: String(a) }))
+      // Operation.invokeHostFunction espera un objeto con la forma adecuada de la SDK
+      txBuilder.addOperation(Operation.invokeHostFunction({
+        contractAddress: contractId,
+        method: method,
+        args: opArgs
+      }))
+      const tx = txBuilder.build()
+      return res.json({ xdr: tx.toXDR() })
+    }
+
+    // Si no está disponible, devolver 501 y explicar
+    return res.status(501).json({ error: 'invokeHostFunction not supported in installed SDK. Use /build_tx fallback or upgrade SDK.' })
+  } catch (e) {
+    console.error('build_invoke error', e)
+    return res.status(500).json({ error: String(e) })
+  }
+})
+
 const port = process.env.PORT || 4001
 app.listen(port, () => console.log(`tx_builder_server listening on ${port}`))
