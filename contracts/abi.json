@@ -1,0 +1,12 @@
+{
+  "register_plant": ["string", "string", "string", "vec<string>"],
+  "add_validator": ["address"],
+  "is_validator": ["address"],
+  "vote_for_plant": ["string", "address"],
+  "get_plant": ["string"],
+  "list_for_sale": ["string", "address", "i128"],
+  "transfer_tokens": ["address", "address", "i128"],
+  "buy_listing": ["string", "address"],
+  "get_listing": ["string"],
+  "get_plant_votes": ["string"]
+}

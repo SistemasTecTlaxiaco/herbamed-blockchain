@@ -1,6 +1,20 @@
 import express from 'express'
 import bodyParser from 'body-parser'
 import { TransactionBuilder, Networks, Operation, Account, xdr } from '@stellar/stellar-sdk'
+import fs from 'fs'
+import path from 'path'
+
+// Load contract ABI (if present)
+let ABI = {}
+try {
+  const abiPath = path.resolve(process.cwd(), '..', '..', 'contracts', 'abi.json')
+  if (fs.existsSync(abiPath)) {
+    ABI = JSON.parse(fs.readFileSync(abiPath, 'utf8'))
+    console.log('Loaded contract ABI from', abiPath)
+  }
+} catch (e) {
+  console.warn('Could not load ABI:', e.message || e)
+}
 
 const app = express()
 app.use(bodyParser.json())
@@ -93,16 +107,38 @@ app.post('/build_invoke', async (req, res) => {
 
     // Si Operation.invokeHostFunction está disponible en esta versión del SDK, úsala
     if (Operation && typeof Operation.invokeHostFunction === 'function') {
-      // Construir args como strings ScVal por ahora
-      const opArgs = args.map(a => ({ type: 'string', value: String(a) }))
-      // Operation.invokeHostFunction espera un objeto con la forma adecuada de la SDK
-      txBuilder.addOperation(Operation.invokeHostFunction({
-        contractAddress: contractId,
-        method: method,
-        args: opArgs
-      }))
-      const tx = txBuilder.build()
-      return res.json({ xdr: tx.toXDR() })
+      // Build op args using ABI types if available
+      let opArgs = []
+      const sig = ABI[method]
+      if (sig && sig.length === args.length) {
+        opArgs = sig.map((t, i) => {
+          const val = args[i]
+          if (t === 'string') return { type: 'string', value: String(val) }
+          if (t === 'i128') return { type: 'i128', value: String(val) }
+          if (t === 'address') return { type: 'address', value: String(val) }
+          if (t === 'vec<string>' && Array.isArray(val)) return { type: 'vec', value: val.map(String) }
+          // fallback to string
+          return { type: 'string', value: String(val) }
+        })
+      } else {
+        // no ABI info: default all args to strings
+        opArgs = args.map(a => ({ type: 'string', value: String(a) }))
+      }
+
+      try {
+        txBuilder.addOperation(Operation.invokeHostFunction({
+          contractAddress: contractId,
+          method: method,
+          args: opArgs
+        }))
+        const tx = txBuilder.build()
+        return res.json({ xdr: tx.toXDR() })
+      } catch (err) {
+        console.warn('invokeHostFunction via Operation failed, falling back to manageData. Error:', err.message || err)
+        txBuilder.addOperation(Operation.manageData({ name: `invoke:${method}`, value: Buffer.from(JSON.stringify(args)) }))
+        const tx = txBuilder.build()
+        return res.json({ xdr: tx.toXDR(), warning: 'invokeHostFunction construction failed; returned manageData fallback' })
+      }
     }
 
     // Si no está disponible, devolver 501 y explicar
