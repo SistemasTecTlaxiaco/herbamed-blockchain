@@ -72,5 +72,7 @@ fn test_listing_and_buy() {
     env.as_contract(&contract_id, || MedicinalPlantsContract::list_for_sale(&env, id.clone(), seller.clone(), 500i128));    // Buy listing
     env.mock_all_auths();
     let ok = env.as_contract(&contract_id, || MedicinalPlantsContract::buy_listing(&env, id.clone(), buyer.clone()));
-    assert!(ok);
+    // `buy_listing` returns `Result<bool, MedicinalPlantsError>` so unwrap and assert
+    assert!(ok.is_ok());
+    assert_eq!(ok.unwrap(), true);
 }
