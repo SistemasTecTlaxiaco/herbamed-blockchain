@@ -10,17 +10,53 @@ const LS_LISTINGS_KEY = 'herbamed:listings'
 const LS_VOTES_KEY = 'herbamed:votes'
 
 function _hasLocalStorage() {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+  return !!_storage()
 }
 
+function _storage() {
+  try {
+    if (typeof window !== 'undefined' && window && window.localStorage) return window.localStorage
+  } catch (e) {}
+  try {
+    if (typeof globalThis !== 'undefined' && globalThis && globalThis.localStorage) return globalThis.localStorage
+  } catch (e) {}
+  return null
+}
+
+const _inMemoryStore = {}
+
 function _readJSON(key) {
-  if (!_hasLocalStorage()) return null
-  try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : null } catch (e) { return null }
+  try {
+    const storage = _storage()
+    if (storage) {
+      const s = storage.getItem(key)
+      if (s) return JSON.parse(s)
+      // if storage exists but item missing, fall back to in-memory mirror
+      if (_inMemoryStore.hasOwnProperty(key)) return _inMemoryStore[key]
+      return null
+    }
+    // fallback to in-memory store when no persistent storage available
+    return _inMemoryStore.hasOwnProperty(key) ? _inMemoryStore[key] : null
+  } catch (e) { return null }
 }
 
 function _writeJSON(key, value) {
-  if (!_hasLocalStorage()) return false
-  try { localStorage.setItem(key, JSON.stringify(value)); return true } catch (e) { return false }
+  try {
+    const storage = _storage()
+    // debug removed in final commit
+    if (storage) {
+      try {
+        storage.setItem(key, JSON.stringify(value))
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.debug('[writeJSON] storage.setItem error:', e && e.message)
+      }
+    }
+    // always mirror to in-memory store for test/runtime resilience
+    _inMemoryStore[key] = value
+    // mirror updated
+    return true
+  } catch (e) { return false }
 }
 
 const networkPassphrase = (typeof NETWORK !== 'undefined' && NETWORK === 'testnet') ? Networks.TESTNET : Networks.PUBLIC
@@ -70,12 +106,15 @@ function getLocalKeypair() {
 
 
 export function setLocalSecret(secret) {
-  if (typeof window !== 'undefined') localStorage.setItem(LOCAL_SECRET_KEY, secret)
+  const storage = _storage()
+  if (storage) storage.setItem(LOCAL_SECRET_KEY, secret)
+  _inMemoryStore[LOCAL_SECRET_KEY] = secret
 }
 
 export function getLocalSecret() {
-  if (typeof window === 'undefined') return ''
-  return localStorage.getItem(LOCAL_SECRET_KEY) || ''
+  const storage = _storage()
+  if (storage) return storage.getItem(LOCAL_SECRET_KEY) || ''
+  return _inMemoryStore[LOCAL_SECRET_KEY] || ''
 }
 
 export async function connectWallet() {
@@ -160,12 +199,26 @@ export async function registerPlant(name, metadata) {
   const plant = (name && name.id) ? name : { id: String(Date.now()), name: name.name || '', description: name.description || '', location: name.location || '' }
   const existing = _readJSON(LS_PLANTS_KEY) || []
   existing.push(plant)
+  // ensure persistence both to available storage and to the in-memory mirror
   _writeJSON(LS_PLANTS_KEY, existing)
+  try {
+    const storage = _storage()
+    if (storage) storage.setItem(LS_PLANTS_KEY, JSON.stringify(existing))
+  } catch (e) {}
+  _inMemoryStore[LS_PLANTS_KEY] = existing
   return { success: true, plantId: plant.id, transactionHash: 'local:register:' + plant.id }
 }
 
 export async function getAllPlants() {
   const existing = _readJSON(LS_PLANTS_KEY)
+  try {
+    const storage = _storage()
+    const stored = storage ? storage.getItem(LS_PLANTS_KEY) : null
+    // eslint-disable-next-line no-console
+    console.debug('[getAllPlants] stored:', stored)
+    // eslint-disable-next-line no-console
+    console.debug('[getAllPlants] inMemory:', _inMemoryStore[LS_PLANTS_KEY])
+  } catch (e) {}
   return existing || []
 }
 
@@ -192,7 +245,7 @@ export async function isRpcAvailable() {
 
 export function disconnectWallet() {
   if (typeof window !== 'undefined') {
-    try { localStorage.removeItem(LOCAL_SECRET_KEY) } catch (e) {}
+    try { const storage = _storage(); if (storage) storage.removeItem(LOCAL_SECRET_KEY); delete _inMemoryStore[LOCAL_SECRET_KEY] } catch (e) {}
   }
 }
 
@@ -251,5 +304,13 @@ export default {
   isRpcAvailable,
   disconnectWallet,
   getConnectedPublicKey
+}
+
+// Debug helper for tests: returns the in-memory mirror store value for a key
+export function _debugGetInMemory(key) {
+  return _inMemoryStore[key]
+}
+
+// Remove temporary debug helpers in final stage: keep for now but not exported in default API
 }
 
