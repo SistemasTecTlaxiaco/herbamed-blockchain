@@ -48,8 +48,7 @@ function _writeJSON(key, value) {
       try {
         storage.setItem(key, JSON.stringify(value))
       } catch (e) {
-        // eslint-disable-next-line no-console
-        console.debug('[writeJSON] storage.setItem error:', e && e.message)
+        // silent: storage may be unavailable
       }
     }
     // always mirror to in-memory store for test/runtime resilience
@@ -211,14 +210,6 @@ export async function registerPlant(name, metadata) {
 
 export async function getAllPlants() {
   const existing = _readJSON(LS_PLANTS_KEY)
-  try {
-    const storage = _storage()
-    const stored = storage ? storage.getItem(LS_PLANTS_KEY) : null
-    // eslint-disable-next-line no-console
-    console.debug('[getAllPlants] stored:', stored)
-    // eslint-disable-next-line no-console
-    console.debug('[getAllPlants] inMemory:', _inMemoryStore[LS_PLANTS_KEY])
-  } catch (e) {}
   return existing || []
 }
 
@@ -310,7 +301,3 @@ export default {
 export function _debugGetInMemory(key) {
   return _inMemoryStore[key]
 }
-
-// Remove temporary debug helpers in final stage: keep for now but not exported in default API
-}
-
