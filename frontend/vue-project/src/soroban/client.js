@@ -117,15 +117,28 @@ export function getLocalSecret() {
 }
 
 export async function connectWallet() {
-  if (typeof window !== 'undefined' && window.freighterApi) {
-    try {
-      const pk = await window.freighterApi.getPublicKey()
-      return pk
-    } catch (e) {
-      return null
+  if (typeof window === 'undefined') return null
+
+  // Wait for Freighter to inject (max 3 seconds)
+  const waitForFreighter = async () => {
+    for (let i = 0; i < 30; i++) {
+      if (window.freighterApi) return window.freighterApi
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
+    return null
   }
-  return null
+
+  try {
+    const api = window.freighterApi || await waitForFreighter()
+    if (!api) throw new Error('Freighter API not available')
+
+    const pk = await api.getPublicKey()
+    if (!pk) throw new Error('No public key returned')
+    return pk
+  } catch (e) {
+    console.error('Freighter connection error:', e)
+    throw e
+  }
 }
 
 export async function submitTx(txXdr) {
@@ -222,13 +235,47 @@ export async function voteForPlant(id) {
 
 export function isFreighterInstalled() {
   if (typeof window === 'undefined') return false
-  return !!(window.freighterApi || window.freighter || window.freighterSDK)
+  // Check for Freighter's injected API
+  // Modern Freighter injects window.freighterApi
+  return !!(window.freighterApi)
+}
+
+// Helper to wait for Freighter injection (called once on app mount)
+export function waitForFreighterInjection() {
+  return new Promise((resolve) => {
+    if (window.freighterApi) {
+      resolve(true)
+      return
+    }
+    
+    // Listen for Freighter injection event
+    const checkFreighter = () => {
+      if (window.freighterApi) {
+        resolve(true)
+        return true
+      }
+      return false
+    }
+    
+    // Poll for max 5 seconds
+    let attempts = 0
+    const interval = setInterval(() => {
+      if (checkFreighter() || attempts++ > 50) {
+        clearInterval(interval)
+        resolve(!!window.freighterApi)
+      }
+    }, 100)
+  })
 }
 
 export async function isRpcAvailable() {
   try {
-    const res = await fetch(RPC_URL, { method: 'GET', mode: 'cors' })
-    return !!(res && typeof res.status === 'number')
+    const res = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' })
+    })
+    return res.ok
   } catch (e) {
     return false
   }
@@ -292,6 +339,7 @@ export default {
   getListing,
   getPlantVotes,
   isFreighterInstalled,
+  waitForFreighterInjection,
   isRpcAvailable,
   disconnectWallet,
   getConnectedPublicKey

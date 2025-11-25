@@ -80,8 +80,8 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
-import { connectWallet, setLocalSecret, isFreighterInstalled, isRpcAvailable } from '@/soroban/client'
+import { ref, computed, onMounted } from 'vue'
+import { connectWallet, setLocalSecret, isFreighterInstalled, isRpcAvailable, waitForFreighterInjection } from '@/soroban/client'
 import { Keypair } from '@stellar/stellar-sdk'
 
 // Helpers Web Crypto
@@ -125,9 +125,18 @@ export default {
     const importPassword = ref('')
     const status = ref(null)
 
-    const freighterText = computed(() => isFreighterInstalled() ? 'Instalada' : 'No detectada')
+    const freighterText = ref('Detectando...')
     const rpcText = ref('...')
-    isRpcAvailable().then(av => rpcText.value = av ? 'Disponible' : 'No disponible')
+    
+    onMounted(async () => {
+      // Wait for Freighter to inject
+      await waitForFreighterInjection()
+      freighterText.value = isFreighterInstalled() ? 'Instalada ✓' : 'No detectada'
+      
+      // Check RPC
+      const rpcAvailable = await isRpcAvailable()
+      rpcText.value = rpcAvailable ? 'Disponible' : 'No disponible'
+    })
 
     function qrUrl(content) {
       const encoded = encodeURIComponent(content)
@@ -202,10 +211,23 @@ export default {
     async function connectFreighter() {
       status.value = null
       try {
+        // Attempt connection (will wait for Freighter injection)
         const pk = await connectWallet()
+        if (!pk) {
+          status.value = { type: 'error', message: 'Freighter no devolvió una clave pública. ¿Rechazaste la conexión?' }
+          return
+        }
+        freighterText.value = 'Conectada ✓'
         status.value = { type: 'success', message: 'Freighter conectada: ' + pk }
       } catch (e) {
-        status.value = { type: 'error', message: 'Error conectando Freighter: ' + (e.message || e) }
+        const errorMsg = e.message || String(e)
+        if (errorMsg.includes('not available') || errorMsg.includes('API not available')) {
+          status.value = { type: 'error', message: 'Freighter no está instalada o no está habilitada. Instálala desde: https://freighter.app' }
+        } else if (errorMsg.includes('User declined')) {
+          status.value = { type: 'error', message: 'Rechazaste la conexión en Freighter' }
+        } else {
+          status.value = { type: 'error', message: 'Error conectando Freighter: ' + errorMsg }
+        }
       }
     }
 

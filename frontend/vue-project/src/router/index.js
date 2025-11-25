@@ -4,6 +4,7 @@ import PlantRegistration from '../views/plants/PlantRegistration.vue'
 import ValidatorDashboard from '../views/validators/ValidatorDashboard.vue'
 import TestFunctions from '../views/plants/TestFunctions.vue'
 import Login from '../components/Login.vue'
+import MarketPlace from '../components/plants/MarketPlace.vue'
 
 const router = createRouter({
   history: createWebHistory('/'),
@@ -31,6 +32,11 @@ const router = createRouter({
       path: '/plants/register',
       name: 'plant-registration',
       component: PlantRegistration
+    },
+    {
+      path: '/marketplace',
+      name: 'marketplace',
+      component: MarketPlace
     },
     {
       path: '/validator',

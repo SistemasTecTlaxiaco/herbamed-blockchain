@@ -15,6 +15,9 @@
               <router-link class="nav-link" to="/plants/register">Registrar Planta</router-link>
             </li>
             <li class="nav-item">
+              <router-link class="nav-link" to="/marketplace">🛒 Marketplace</router-link>
+            </li>
+            <li class="nav-item">
               <router-link class="nav-link" to="/validator">Validadores</router-link>
             </li>
             <li class="nav-item">
