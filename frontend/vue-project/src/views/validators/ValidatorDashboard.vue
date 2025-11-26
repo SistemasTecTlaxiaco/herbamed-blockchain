@@ -1,6 +1,12 @@
 <template>
   <div class="container mt-4">
     <h2>Validación de Plantas</h2>
+    
+    <div v-if="pendingPlants.length === 0" class="alert alert-info mt-4">
+      <h5>✅ No hay plantas pendientes de validación</h5>
+      <p class="mb-0">Todas las plantas han sido validadas o aún no hay plantas registradas.</p>
+    </div>
+    
     <div class="row mt-4">
       <div class="col-md-6 mb-4" v-for="plant in pendingPlants" :key="plant.id">
         <div class="card">

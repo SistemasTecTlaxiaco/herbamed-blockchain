@@ -1,6 +1,12 @@
 <template>
   <div class="container mt-4">
     <h2>Lista de Plantas Medicinales</h2>
+    
+    <div v-if="plants.length === 0" class="alert alert-info mt-4">
+      <h5>📭 No hay plantas registradas</h5>
+      <p class="mb-0">Ve a <router-link to="/plants/register">Registrar Planta</router-link> para agregar la primera.</p>
+    </div>
+    
     <div class="row mt-4">
       <div class="col-md-4 mb-4" v-for="plant in plants" :key="plant.id">
         <div class="card">

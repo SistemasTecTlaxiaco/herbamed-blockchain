@@ -78,24 +78,16 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { listForSale, buyListing, getListing } from '@/soroban/client'
 
 export default {
   name: 'MarketPlace',
   setup() {
     // Usar modo global desde el store
-    const { state } = require('vuex').useStore ? require('vuex') : { state: {} }
-    // Preferir importación oficial de useStore
-    // (No usamos import arriba para mantener cambios mínimos)
-    const storeMode = ref(null)
-    try {
-      const { useStore } = require('vuex')
-      const s = useStore()
-      storeMode.value = s.state.mode
-    } catch (_) {
-      storeMode.value = localStorage.getItem('herbamed:mode') || 'demo'
-    }
+    const { useStore } = require('vuex')
+    const store = useStore()
+    const storeMode = computed(() => store.state.mode || 'demo')
     const listForm = ref({ plantId: '', price: '' })
     const listings = ref([])
     const loading = ref(false)

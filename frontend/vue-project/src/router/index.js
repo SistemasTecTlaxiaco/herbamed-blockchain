@@ -53,9 +53,7 @@ router.beforeEach((to, from, next) => {
   if (!mode && to.name !== 'login') {
     return next({ name: 'login' })
   }
-  if (mode && to.name === 'login') {
-    return next({ name: 'plants' })
-  }
+  // Permitir volver a login si se clickea el botón de cambiar modo
   next()
 })
 
