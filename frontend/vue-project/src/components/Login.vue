@@ -2,7 +2,26 @@
   <div class="container mt-4">
     <div class="card mx-auto" style="max-width:640px">
       <div class="card-body">
-        <h4 class="card-title text-center">Conectar / Crear Cuenta</h4>
+        <h4 class="card-title text-center">Conectar / Seleccionar Modo</h4>
+
+        <!-- Selección de modo global -->
+        <div class="mb-3 p-3 border rounded bg-light">
+          <h6 class="mb-2">Selecciona el modo de la aplicación</h6>
+          <div class="d-flex gap-2 mb-2">
+            <button :class="['btn', selectedMode==='demo' ? 'btn-primary' : 'btn-outline-primary']" @click="selectedMode='demo'">Demo (localStorage)</button>
+            <button :class="['btn', selectedMode==='blockchain' ? 'btn-success' : 'btn-outline-success']" @click="selectedMode='blockchain'">Blockchain (firma real)</button>
+          </div>
+          <div v-if="selectedMode==='demo'" class="small text-muted">
+            Modo Demo: Opera sin firmar transacciones reales, datos sólo en tu navegador.
+          </div>
+            <div v-else-if="selectedMode==='blockchain'" class="small text-muted">
+            Modo Blockchain: Requiere Freighter funcional o haber importado tu SECRET_KEY.
+          </div>
+          <div class="mt-3">
+            <button class="btn btn-warning" :disabled="!canConfirmMode" @click="confirmMode">Confirmar Modo</button>
+            <span v-if="modeStatus" class="ms-2 small" :class="modeStatus.type==='error' ? 'text-danger' : 'text-success'">{{ modeStatus.message }}</span>
+          </div>
+        </div>
 
         <ul class="nav nav-tabs mb-3">
           <li class="nav-item">
@@ -130,6 +149,19 @@ export default {
 
     const freighterText = ref('Detectando...')
     const rpcText = ref('...')
+    const selectedMode = ref(null)
+    const modeStatus = ref(null)
+    const canConfirmMode = computed(() => {
+      if (!selectedMode.value) return false
+      if (selectedMode.value === 'blockchain') {
+        // requerir signer local o freighter
+        const hasLocal = typeof LOCAL_SECRET !== 'undefined' && LOCAL_SECRET
+        const hasEnv = import.meta.env.VITE_SOROBAN_SECRET_KEY || ''
+        const hasFreighter = isFreighterInstalled()
+        return hasLocal || hasEnv || hasFreighter
+      }
+      return true
+    })
     
     onMounted(async () => {
       // Wait for Freighter to inject
@@ -240,7 +272,31 @@ export default {
       status.value = { type: 'success', message: 'Desconectado (nota: la clave almacenada sigue en localStorage si la guardaste).' }
     }
 
-    return { activeTab, loginPassword, createPassword, createPasswordConfirm, newAccount, importSecret, importPassword, status, freighterText, rpcText, qrUrl, createAccount, generateOnly, loginLocal, importAndSave, importOnly, connectFreighter, logout }
+    async function confirmMode() {
+      modeStatus.value = null
+      if (!selectedMode.value) {
+        modeStatus.value = { type: 'error', message: 'Selecciona un modo primero.' }
+        return
+      }
+      if (selectedMode.value === 'blockchain' && !canConfirmMode.value) {
+        modeStatus.value = { type: 'error', message: 'Necesitas importar SECRET_KEY o tener Freighter disponible.' }
+        return
+      }
+      try {
+        const { useStore } = await import('vuex')
+        const s = useStore()
+        await s.dispatch('setMode', selectedMode.value)
+        modeStatus.value = { type: 'success', message: 'Modo establecido: ' + selectedMode.value }
+        // redirigir
+        const { useRouter } = await import('vue-router')
+        const r = useRouter()
+        r.push({ name: 'plants' })
+      } catch (e) {
+        modeStatus.value = { type: 'error', message: 'Error guardando modo: ' + (e.message || e) }
+      }
+    }
+
+    return { activeTab, loginPassword, createPassword, createPasswordConfirm, newAccount, importSecret, importPassword, status, freighterText, rpcText, qrUrl, createAccount, generateOnly, loginLocal, importAndSave, importOnly, connectFreighter, logout, selectedMode, modeStatus, canConfirmMode, confirmMode }
   }
 }
 </script>

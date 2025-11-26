@@ -4,20 +4,16 @@
       <div class="card-body">
         <h4 class="card-title">💰 Marketplace - Plantas en Venta</h4>
         
-        <!-- Mode selector -->
+        <!-- Modo global (solo lectura, definido en Login) -->
         <div class="alert alert-info mb-3">
-          <strong>Modo:</strong>
-          <div class="btn-group ms-2" role="group">
-            <button :class="['btn btn-sm', mode === 'demo' ? 'btn-primary' : 'btn-outline-primary']" @click="mode = 'demo'">
-              Demo (localStorage)
-            </button>
-            <button :class="['btn btn-sm', mode === 'blockchain' ? 'btn-success' : 'btn-outline-success']" @click="mode = 'blockchain'">
-              Blockchain (firma real)
-            </button>
-          </div>
-          <p class="mb-0 mt-2 small">
-            <strong>Demo:</strong> Sin firma, datos en navegador | 
-            <strong>Blockchain:</strong> Requiere Freighter o clave local
+          <strong>Modo actual:</strong>
+          <span v-if="storeMode==='demo'" class="badge bg-primary ms-2">Demo (localStorage)</span>
+          <span v-else class="badge bg-success ms-2">Blockchain (firma real)</span>
+          <p class="mb-0 mt-2 small" v-if="storeMode==='demo'">
+            Estás en modo <strong>Demo</strong>: las operaciones se guardan sólo en tu navegador.
+          </p>
+          <p class="mb-0 mt-2 small" v-else>
+            Estás en modo <strong>Blockchain</strong>: se intentará firmar con Freighter o SECRET_KEY.
           </p>
         </div>
 
@@ -88,7 +84,18 @@ import { listForSale, buyListing, getListing } from '@/soroban/client'
 export default {
   name: 'MarketPlace',
   setup() {
-    const mode = ref('demo')
+    // Usar modo global desde el store
+    const { state } = require('vuex').useStore ? require('vuex') : { state: {} }
+    // Preferir importación oficial de useStore
+    // (No usamos import arriba para mantener cambios mínimos)
+    const storeMode = ref(null)
+    try {
+      const { useStore } = require('vuex')
+      const s = useStore()
+      storeMode.value = s.state.mode
+    } catch (_) {
+      storeMode.value = localStorage.getItem('herbamed:mode') || 'demo'
+    }
     const listForm = ref({ plantId: '', price: '' })
     const listings = ref([])
     const loading = ref(false)
@@ -116,7 +123,7 @@ export default {
 
       loading.value = true
       try {
-        if (mode.value === 'demo') {
+        if (storeMode.value === 'demo') {
           // Demo mode: just save to localStorage
           const stored = JSON.parse(localStorage.getItem('herbamed:listings') || '{}')
           stored[listForm.value.plantId] = {
@@ -145,7 +152,7 @@ export default {
       status.value = null
       loading.value = true
       try {
-        if (mode.value === 'demo') {
+        if (storeMode.value === 'demo') {
           // Demo mode: mark as sold in localStorage
           const stored = JSON.parse(localStorage.getItem('herbamed:listings') || '{}')
           if (stored[plantId]) {
@@ -170,7 +177,7 @@ export default {
       loadListings()
     })
 
-    return { mode, listForm, listings, loading, status, listPlant, buyPlant }
+    return { storeMode, listForm, listings, loading, status, listPlant, buyPlant }
   }
 }
 </script>

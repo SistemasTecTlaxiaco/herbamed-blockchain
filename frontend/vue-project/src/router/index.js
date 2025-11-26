@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import store from '../store'
 import PlantList from '../views/plants/PlantList.vue'
 import PlantRegistration from '../views/plants/PlantRegistration.vue'
 import ValidatorDashboard from '../views/validators/ValidatorDashboard.vue'
@@ -45,5 +46,20 @@ const router = createRouter({
     }
   ]
 })
+
+// Route guard: must select mode before accessing any route except login
+router.beforeEach((to, from, next) => {
+  const mode = store.state.mode || localStorage.getItem('herbamed:mode')
+  if (!mode && to.name !== 'login') {
+    return next({ name: 'login' })
+  }
+  if (mode && to.name === 'login') {
+    return next({ name: 'plants' })
+  }
+  next()
+})
+
+// Initialize mode on first load
+store.dispatch('initMode').catch(() => {})
 
 export default router
