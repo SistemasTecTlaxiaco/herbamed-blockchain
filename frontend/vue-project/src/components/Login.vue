@@ -4,6 +4,13 @@
       <div class="card-body">
         <h4 class="card-title text-center">Conectar / Seleccionar Modo</h4>
 
+        <!-- Estado del modo actual -->
+        <div v-if="storeMode" class="alert" :class="storeMode==='demo' ? 'alert-primary' : 'alert-success'">
+          <strong>Modo actual:</strong>
+          <span v-if="storeMode==='demo'">📦 Demo (localStorage)</span>
+          <span v-else>⛓️ Blockchain (firma real)</span>
+        </div>
+
         <!-- Selección de modo global -->
         <div class="mb-3 p-3 border rounded bg-light">
           <h6 class="mb-2">Selecciona el modo de la aplicación</h6>
@@ -155,6 +162,7 @@ export default {
     const freighterText = ref('Detectando...')
     const rpcText = ref('...')
     const selectedMode = ref(null)
+    const storeMode = computed(() => store.state.mode || localStorage.getItem('herbamed:mode'))
     const modeStatus = ref(null)
     const canConfirmMode = computed(() => {
       if (!selectedMode.value) return false
@@ -299,7 +307,7 @@ export default {
       }
     }
 
-    return { activeTab, loginPassword, createPassword, createPasswordConfirm, newAccount, importSecret, importPassword, status, freighterText, rpcText, qrUrl, createAccount, generateOnly, loginLocal, importAndSave, importOnly, connectFreighter, logout, selectedMode, modeStatus, canConfirmMode, confirmMode }
+    return { activeTab, loginPassword, createPassword, createPasswordConfirm, newAccount, importSecret, importPassword, status, freighterText, rpcText, qrUrl, createAccount, generateOnly, loginLocal, importAndSave, importOnly, connectFreighter, logout, selectedMode, modeStatus, canConfirmMode, confirmMode, storeMode }
   }
 }
 </script>

@@ -78,7 +78,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { listForSale, buyListing, getListing } from '@/soroban/client'
 
 export default {
@@ -166,6 +166,11 @@ export default {
     }
 
     onMounted(() => {
+      loadListings()
+    })
+
+    // Recargar cuando cambia el modo global
+    watch(storeMode, () => {
       loadListings()
     })
 

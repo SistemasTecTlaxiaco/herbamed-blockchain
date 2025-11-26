@@ -43,8 +43,18 @@
         plants: []
       }
     },
+    computed: {
+      mode() {
+        return this.$store?.state?.mode || localStorage.getItem('herbamed:mode')
+      }
+    },
     async created() {
       await this.loadPlants()
+    },
+    watch: {
+      mode() {
+        this.loadPlants()
+      }
     },
     methods: {
       async loadPlants() {
