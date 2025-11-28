@@ -4,7 +4,7 @@ Resumen de acciones realizadas en el entorno de desarrollo / testnet:
 
 - Cuenta inicial creada (testnet):
   - Public Key: `GADZC7QBB4TWRFECMKN6O7YUC5THLYCTPIYBPZH2MXRJKYDPIICESF23`
-  - Secret Key (proporcionada inicialmente): `SC6F34PG32JOVH6KUIMOW4GDX33OGRJP6WNRQMRYROJJ57GZ5YIZXEAK` (nota: si esta secret se publicó, considerarla comprometida)
+  - Secret Key (proporcionada inicialmente): `SC6F3...5YIZXEAK` (nota: si esta secret se publicó, considerarla comprometida)
 - Fondeo: la cuenta fue fondeada en testnet (friendbot) — balance actual: ~19999.5572988 XLM
 - Deploy de contrato WASM (testnet):
   - Contract ID: `CA5C74SZ5XHXENOVQ454WQN66PMVSPMIZV5FYUR6OWDUQKC4PKOOXNPR`
