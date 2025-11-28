@@ -13,7 +13,7 @@ Ya que Freighter tiene problemas de detección, **usa tu SECRET_KEY directamente
 El archivo `.env.local` ya tiene tu SECRET_KEY:
 
 ```bash
-VITE_SOROBAN_SECRET_KEY=SC6F34PGDRKMIPIWIWZOHLHQE7L27DWNVCUD2UKNER7ZLWNKHPQHFNHR
+VITE_SOROBAN_SECRET_KEY=SC6F34...QHFNHR
 ```
 
 ✅ **Ventajas:**
@@ -37,7 +37,7 @@ Si prefieres no usar `.env.local`:
 2. Click en tab **"🔐 Importar Clave"** (ahora es la pestaña por defecto)
 3. Pega tu SECRET_KEY:
    ```
-   SC6F34PGDRKMIPIWIWZOHLHQE7L27DWNVCUD2UKNER7ZLWNKHPQHFNHR
+   SC6F34PG...QHFNHR
    ```
 4. Click en **"Solo importar (no guardar)"**
 
@@ -51,10 +51,10 @@ Abre `frontend/vue-project/src/soroban/config.js` y descomenta la línea:
 
 ```javascript
 // ANTES (comentado):
-// export const SECRET_KEY = 'SC6F34PGDRKMIPIWIWZOHLHQE7L27DWNVCUD2UKNER7ZLWNKHPQHFNHR'
+// export const SECRET_KEY = 'SC6F34P...KHPQHFNHR'
 
 // DESPUÉS (descomentado):
-export const SECRET_KEY = 'SC6F34PGDRKMIPIWIWZOHLHQE7L27DWNVCUD2UKNER7ZLWNKHPQHFNHR'
+export const SECRET_KEY = 'SC6F34PGD...ZLWNKHPQHFNHR'
 ```
 
 ⚠️ **IMPORTANTE:** NO hacer commit de este cambio (quitar antes de subir a GitHub)
@@ -79,7 +79,7 @@ Ubicación: Jardín A
 Verás en consola:
 ```
 [submitTx] ✓ Firmando con SECRET_KEY de configuración...
-[submitTx] ✓ Firmado con SECRET_KEY de config: GADZC7QBB4TWRFECMKN6O7YUC5THLYCTPIYBPZH2MXRJKYDPIICESF23
+[submitTx] ✓ Firmado con SECRET_KEY de config: GADZC7QBB4T...PIICESF23
 ```
 
 ---
@@ -223,7 +223,7 @@ VITE_SOROBAN_SECRET_KEY=SC6F34PG...
 Abre `frontend/vue-project/src/soroban/config.js` y descomenta temporalmente:
 
 ```javascript
-export const SECRET_KEY = 'SC6F34PGDRKMIPIWIWZOHLHQE7L27DWNVCUD2UKNER7ZLWNKHPQHFNHR'
+export const SECRET_KEY = 'SC6F34PGDRK...PQHFNHR'
 ```
 
 ---
