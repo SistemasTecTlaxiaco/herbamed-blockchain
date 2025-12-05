@@ -147,33 +147,220 @@ Actualmente no hay features activas en desarrollo. El sistema está en estado fu
 
 ## 🛠️ TECNOLOGÍAS UTILIZADAS
 
-### Blockchain
-- **Stellar Network:** Testnet
-- **Soroban:** Smart contracts en Rust
-- **Horizon API:** Consultas de cuenta/balance
-- **Freighter Wallet:** Desktop wallet
+### 🔗 Blockchain Layer
 
-### Frontend
-- **Framework:** Vue 3.3.8 (Composition API)
-- **Build Tool:** Vite 7.2.2
-- **State:** Vuex 4.1.0
-- **Router:** Vue Router 4.2.5
-- **UI:** Bootstrap 5.3.2
-- **Stellar SDK:** @stellar/stellar-sdk 14.3.3
-- **WalletConnect:** @walletconnect/sign-client 2.23.0
-- **QR Generation:** qrcode 1.5.4
+| Tecnología | Versión | Uso en el Proyecto |
+|------------|---------|-------------------|
+| **Stellar Testnet** | - | Red blockchain principal para desarrollo |
+| **Soroban SDK** | 23.0.1 | Framework para smart contracts en Rust |
+| **stellar-cli** | latest | Deploy y gestión de contratos |
+| **Horizon API** | v2 | Consulta de balances y estado de cuentas |
+| **Stellar SDK (JS)** | 14.3.3 | Interacción con blockchain desde frontend |
+| **Freighter Wallet** | - | Extensión de navegador para firma de transacciones |
 
-### Backend/Smart Contract
-- **Language:** Rust
-- **SDK:** soroban-sdk
-- **Deploy:** stellar-cli
-- **Network:** Stellar Testnet
+**Dónde se usa:**
+- `contracts/medicinal-plants/src/lib.rs` - Smart contract Rust
+- `frontend/vue-project/src/soroban/client.js` - Cliente RPC Stellar
+- `frontend/vue-project/src/soroban/balance.js` - Horizon API calls
 
-### Development Tools
-- **Package Manager:** npm
-- **Linter:** ESLint
-- **Testing:** Vitest (frontend), Rust tests (backend)
-- **Mobile Testing:** ngrok (HTTPS tunnel)
+---
+
+### 🎨 Frontend Layer
+
+#### Core Framework
+
+| Tecnología | Versión | Uso en el Proyecto |
+|------------|---------|-------------------|
+| **Vue.js** | 3.3.8 | Framework principal (Composition API) |
+| **Vite** | 7.2.2 | Build tool y dev server |
+| **Vuex** | 4.1.0 | State management (auth, balance, publicKey) |
+| **Vue Router** | 4.2.5 | Navegación SPA + auth guard |
+
+**Dónde se usa:**
+- `frontend/vue-project/src/App.vue` - Componente raíz
+- `frontend/vue-project/src/main.js` - Entry point
+- `frontend/vue-project/src/store/index.js` - Vuex store
+- `frontend/vue-project/src/router/index.js` - Rutas y guards
+
+#### UI/UX
+
+| Tecnología | Versión | Uso en el Proyecto |
+|------------|---------|-------------------|
+| **Bootstrap** | 5.3.2 | Framework CSS (grid, components, utilities) |
+| **@popperjs/core** | 2.11.8 | Tooltips y popovers (Bootstrap dependency) |
+
+**Dónde se usa:**
+- `frontend/vue-project/src/components/Login.vue` - Forms, modals, cards
+- `frontend/vue-project/src/views/plants/*.vue` - Tables, buttons, layout
+- `frontend/vue-project/index.html` - CDN Bootstrap CSS
+
+#### Autenticación & Wallets
+
+| Tecnología | Versión | Uso en el Proyecto |
+|------------|---------|-------------------|
+| **WalletConnect** | 2.23.0 | Conexión con wallets móviles vía QR |
+| **@walletconnect/utils** | 2.23.0 | Utilidades WalletConnect |
+| **qrcode** | 1.5.4 | Generación de QR codes para WalletConnect |
+| **Crypto API** | Web Standard | Cifrado AES-GCM para claves locales |
+| **SubtleCrypto** | Web Standard | PBKDF2 (100k iterations) para derivación de claves |
+
+**Dónde se usa:**
+- `frontend/vue-project/src/components/Login.vue` - 3 métodos de auth
+- `frontend/vue-project/src/soroban/walletconnect.js` - WalletConnect SignClient
+- Lines 239-251 (Login.vue) - QR generation con canvas
+
+#### HTTP & API
+
+| Tecnología | Versión | Uso en el Proyecto |
+|------------|---------|-------------------|
+| **Axios** | 1.6.2 | HTTP client para Horizon API |
+
+**Dónde se usa:**
+- `frontend/vue-project/src/soroban/balance.js` - Fetch balance from Horizon
+
+---
+
+### 🦀 Backend/Smart Contract Layer
+
+| Tecnología | Versión | Uso en el Proyecto |
+|------------|---------|-------------------|
+| **Rust** | Edition 2021 | Lenguaje para smart contracts Soroban |
+| **soroban-sdk** | 23.0.1 | SDK principal para desarrollo |
+| **soroban-sdk/testutils** | 23.0.1 | Framework de testing |
+
+**Configuración de Compilación:**
+```toml
+opt-level = "z"           # Máxima optimización de tamaño
+lto = true                # Link-Time Optimization
+codegen-units = 1         # Mejor optimización
+strip = "symbols"         # Reducir tamaño binario
+panic = "abort"           # Reducir overhead
+```
+
+**Dónde se usa:**
+- `contracts/medicinal-plants/src/lib.rs` - Contrato principal (4 funciones)
+- `contracts/medicinal-plants/src/test.rs` - Tests unitarios
+- `contracts/medicinal-plants/Cargo.toml` - Configuración
+
+**Funciones Implementadas:**
+1. `register_plant()` - Registro de planta
+2. `list_for_sale()` - Listado en marketplace
+3. `buy_listing()` - Compra de planta
+4. `vote_for_plant()` - Sistema de votación
+
+---
+
+### 🧪 Testing & Development
+
+| Tecnología | Versión | Uso en el Proyecto |
+|------------|---------|-------------------|
+| **Vitest** | 1.1.5 | Testing framework para frontend |
+| **jsdom** | 21.1.0 | DOM simulation para tests |
+| **Rust Test Framework** | Built-in | Tests de smart contracts |
+| **ngrok** | latest | HTTPS tunnel para testing mobile |
+
+**Dónde se usa:**
+- `frontend/vue-project/package.json` - Config Vitest
+- `contracts/medicinal-plants/src/test.rs` - Rust tests (2/2 passing)
+- Mobile testing - ngrok para WalletConnect desde dispositivos reales
+
+**Tests Implementados:**
+- ✅ `test_register_plant()` - Verifica registro
+- ✅ `test_vote_for_plant()` - Verifica votación
+
+---
+
+### 🛠️ Development Tools
+
+| Herramienta | Versión | Uso en el Proyecto |
+|-------------|---------|-------------------|
+| **npm** | latest | Package manager |
+| **ESLint** | - | Linting JavaScript/Vue |
+| **Git** | - | Control de versiones |
+| **VS Code** | - | IDE recomendado |
+| **GitHub Copilot** | - | AI assistant (documented in .github/) |
+
+**Dónde se usa:**
+- `frontend/vue-project/package.json` - Scripts npm
+- `.github/copilot-instructions.md` - Instrucciones para AI
+- `.gitignore` - Archivos ignorados
+
+---
+
+### 📦 Dependencias Backend (Express Server - Opcional)
+
+| Tecnología | Versión | Uso en el Proyecto |
+|------------|---------|-------------------|
+| **Express** | 5.1.0 | Server HTTP (scripts opcionales) |
+| **body-parser** | 2.2.0 | Parse request bodies |
+
+**Dónde se usa:**
+- `frontend/vue-project/scripts/tx_builder_server.js` - Build XDR transactions
+- Uso opcional para debugging de transacciones
+
+---
+
+### 🌐 APIs Externas
+
+| Servicio | Endpoint | Uso en el Proyecto |
+|----------|----------|-------------------|
+| **Stellar Horizon** | https://horizon-testnet.stellar.org | Consulta de balances y account info |
+| **Stellar RPC** | https://soroban-testnet.stellar.org | Invocación de smart contracts |
+| **WalletConnect Cloud** | relay.walletconnect.com | Relay server para WalletConnect |
+
+**Dónde se usa:**
+- `.env` - URLs configuradas
+- `client.js` - RPC calls
+- `balance.js` - Horizon API calls
+- `walletconnect.js` - WalletConnect relay
+
+---
+
+### 📊 Resumen por Capa
+
+```
+┌─────────────────────────────────────────────┐
+│         FRONTEND (Vue 3 + Vite)             │
+│  - Vue Router 4.2.5 (navegación)            │
+│  - Vuex 4.1.0 (state)                       │
+│  - Bootstrap 5.3.2 (UI)                     │
+│  - Axios 1.6.2 (HTTP)                       │
+│  - WalletConnect 2.23.0 (mobile wallets)    │
+│  - qrcode 1.5.4 (QR generation)             │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│      BLOCKCHAIN INTEGRATION LAYER           │
+│  - @stellar/stellar-sdk 14.3.3              │
+│  - Horizon API v2 (balances)                │
+│  - Stellar RPC (contract calls)             │
+│  - Freighter Wallet (desktop)               │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│         BLOCKCHAIN (Stellar Testnet)        │
+│  - Soroban Smart Contract                   │
+│  - Rust + soroban-sdk 23.0.1                │
+│  - Contract: CA5C74SZ...PKOOXNPR            │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+### 🔐 Seguridad & Criptografía
+
+| Tecnología | Uso en el Proyecto |
+|------------|-------------------|
+| **Web Crypto API** | Cifrado AES-GCM de claves privadas |
+| **PBKDF2** | Derivación de claves (100,000 iterations) |
+| **Ed25519** | Firma digital Stellar (via SDK) |
+| **SHA-256** | Hashing (via Stellar SDK) |
+| **CSP (Content Security Policy)** | Canvas rendering para evitar inline scripts |
+
+**Dónde se usa:**
+- `Login.vue` (lines 90-120) - AES-GCM encryption
+- `Login.vue` (lines 122-145) - PBKDF2 key derivation
+- QR generation usa canvas (no data URLs) para cumplir CSP
 
 ---
 
