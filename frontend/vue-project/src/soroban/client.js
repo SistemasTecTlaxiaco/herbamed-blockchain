@@ -3,60 +3,8 @@ import { CONTRACT_ADDRESS, RPC_URL, NETWORK, SECRET_KEY, TX_BUILDER_URL } from '
 
 const { Keypair, TransactionBuilder, Networks, xdr, Transaction, SorobanRpc, scValToNative } = stellar
 
-// Simplified Soroban client helpers (syntax-clean, minimal logic)
+// Soroban client helpers for blockchain operations
 const LOCAL_SECRET_KEY = 'soroban_secret'
-const LS_PLANTS_KEY = 'herbamed:plants'
-const LS_LISTINGS_KEY = 'herbamed:listings'
-const LS_VOTES_KEY = 'herbamed:votes'
-
-function _hasLocalStorage() {
-  return !!_storage()
-}
-
-function _storage() {
-  try {
-    if (typeof window !== 'undefined' && window && window.localStorage) return window.localStorage
-  } catch (e) {}
-  try {
-    if (typeof globalThis !== 'undefined' && globalThis && globalThis.localStorage) return globalThis.localStorage
-  } catch (e) {}
-  return null
-}
-
-const _inMemoryStore = {}
-
-function _readJSON(key) {
-  try {
-    const storage = _storage()
-    if (storage) {
-      const s = storage.getItem(key)
-      if (s) return JSON.parse(s)
-      // if storage exists but item missing, fall back to in-memory mirror
-      if (_inMemoryStore.hasOwnProperty(key)) return _inMemoryStore[key]
-      return null
-    }
-    // fallback to in-memory store when no persistent storage available
-    return _inMemoryStore.hasOwnProperty(key) ? _inMemoryStore[key] : null
-  } catch (e) { return null }
-}
-
-function _writeJSON(key, value) {
-  try {
-    const storage = _storage()
-    // debug removed in final commit
-    if (storage) {
-      try {
-        storage.setItem(key, JSON.stringify(value))
-      } catch (e) {
-        // silent: storage may be unavailable
-      }
-    }
-    // always mirror to in-memory store for test/runtime resilience
-    _inMemoryStore[key] = value
-    // mirror updated
-    return true
-  } catch (e) { return false }
-}
 
 const networkPassphrase = (typeof NETWORK !== 'undefined' && NETWORK === 'testnet') ? Networks.TESTNET : Networks.PUBLIC
 
@@ -105,15 +53,16 @@ function getLocalKeypair() {
 
 
 export function setLocalSecret(secret) {
-  const storage = _storage()
-  if (storage) storage.setItem(LOCAL_SECRET_KEY, secret)
-  _inMemoryStore[LOCAL_SECRET_KEY] = secret
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(LOCAL_SECRET_KEY, secret)
+  }
 }
 
 export function getLocalSecret() {
-  const storage = _storage()
-  if (storage) return storage.getItem(LOCAL_SECRET_KEY) || ''
-  return _inMemoryStore[LOCAL_SECRET_KEY] || ''
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return window.localStorage.getItem(LOCAL_SECRET_KEY) || ''
+  }
+  return ''
 }
 
 export async function connectWallet() {
@@ -223,30 +172,37 @@ export async function submitOperation(operation = {}) {
 }
 
 export async function registerPlant(name, metadata) {
-  // Persist plant locally for demo so UI updates immediately
-  const plant = (name && name.id) ? name : { id: String(Date.now()), name: name.name || '', description: name.description || '', location: name.location || '' }
-  const existing = _readJSON(LS_PLANTS_KEY) || []
-  existing.push(plant)
-  // ensure persistence both to available storage and to the in-memory mirror
-  _writeJSON(LS_PLANTS_KEY, existing)
-  try {
-    const storage = _storage()
-    if (storage) storage.setItem(LS_PLANTS_KEY, JSON.stringify(existing))
-  } catch (e) {}
-  _inMemoryStore[LS_PLANTS_KEY] = existing
-  return { success: true, plantId: plant.id, transactionHash: 'local:register:' + plant.id }
+  // Register plant in blockchain via contract
+  const plant = (name && name.id) ? name : { 
+    id: String(Date.now()), 
+    name: name.name || '', 
+    description: name.description || '', 
+    location: name.location || '' 
+  }
+  
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'register_plant', 
+    args: [plant.id, plant.name, plant.description, plant.location] 
+  })
+  
+  return { success: true, plantId: plant.id, transactionHash: resp?.hash || 'pending' }
 }
 
 export async function getAllPlants() {
-  const existing = _readJSON(LS_PLANTS_KEY)
-  return existing || []
+  // Query contract for all plants
+  // Por ahora retorna array vacío hasta implementar query
+  return []
 }
 
 export async function voteForPlant(id) {
-  const votes = _readJSON(LS_VOTES_KEY) || {}
-  votes[id] = (votes[id] || 0) + 1
-  _writeJSON(LS_VOTES_KEY, votes)
-  return { success: true, plantId: id, transactionHash: 'local:vote:' + id }
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'vote_for_plant', 
+    args: [id] 
+  })
+  
+  return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
 }
 
 export function isFreighterInstalled() {
@@ -292,8 +248,8 @@ export async function isRpcAvailable() {
 }
 
 export function disconnectWallet() {
-  if (typeof window !== 'undefined') {
-    try { const storage = _storage(); if (storage) storage.removeItem(LOCAL_SECRET_KEY); delete _inMemoryStore[LOCAL_SECRET_KEY] } catch (e) {}
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem(LOCAL_SECRET_KEY)
   }
 }
 
@@ -309,31 +265,35 @@ export function getConnectedPublicKey() {
 }
 
 export async function listForSale(plantId, price) {
-  // Persist listing locally so UI shows listed items
-  const listings = _readJSON(LS_LISTINGS_KEY) || {}
-  listings[plantId] = { plantId, price, available: true, listedAt: Date.now() }
-  _writeJSON(LS_LISTINGS_KEY, listings)
-  const resp = await submitTx({ contractId: CONTRACT_ADDRESS, method: 'list_for_sale', args: [plantId, String(price)] })
-  return { success: true, plantId, price, transactionHash: resp && resp.xdr ? resp.xdr : 'local:list:' + plantId }
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'list_for_sale', 
+    args: [plantId, String(price)] 
+  })
+  
+  return { success: true, plantId, price, transactionHash: resp?.hash || 'pending' }
 }
 
 export async function buyListing(plantId, price) {
-  const listings = _readJSON(LS_LISTINGS_KEY) || {}
-  if (!listings[plantId] || !listings[plantId].available) throw new Error('Listing not available')
-  listings[plantId].available = false
-  _writeJSON(LS_LISTINGS_KEY, listings)
-  const resp = await submitTx({ contractId: CONTRACT_ADDRESS, method: 'buy_listing', args: [plantId] })
-  return { success: true, plantId, price, transactionHash: resp && resp.xdr ? resp.xdr : 'local:buy:' + plantId }
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'buy_listing', 
+    args: [plantId] 
+  })
+  
+  return { success: true, plantId, price, transactionHash: resp?.hash || 'pending' }
 }
 
 export async function getListing(plantId) {
-  const listings = _readJSON(LS_LISTINGS_KEY) || {}
-  return listings[plantId] || { plantId, available: false, price: null }
+  // Query contract for listing details
+  // Por ahora retorna estructura básica
+  return { plantId, available: false, price: null }
 }
 
 export async function getPlantVotes(plantId) {
-  const votes = _readJSON(LS_VOTES_KEY) || {}
-  return votes[plantId] || 0
+  // Query contract for vote count
+  // Por ahora retorna 0
+  return 0
 }
 
 export default {
@@ -341,6 +301,7 @@ export default {
   getLocalSecret,
   connectWallet,
   submitTx,
+  submitOperation,
   registerPlant,
   getAllPlants,
   voteForPlant,
@@ -353,9 +314,4 @@ export default {
   isRpcAvailable,
   disconnectWallet,
   getConnectedPublicKey
-}
-
-// Debug helper for tests: returns the in-memory mirror store value for a key
-export function _debugGetInMemory(key) {
-  return _inMemoryStore[key]
 }

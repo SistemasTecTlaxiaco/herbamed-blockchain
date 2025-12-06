@@ -3,19 +3,6 @@
     <div class="card">
       <div class="card-body">
         <h4 class="card-title">💰 Marketplace - Plantas en Venta</h4>
-        
-        <!-- Modo global (solo lectura, definido en Login) -->
-        <div class="alert alert-info mb-3">
-          <strong>Modo actual:</strong>
-          <span v-if="storeMode==='demo'" class="badge bg-primary ms-2">Demo (localStorage)</span>
-          <span v-else class="badge bg-success ms-2">Blockchain (firma real)</span>
-          <p class="mb-0 mt-2 small" v-if="storeMode==='demo'">
-            Estás en modo <strong>Demo</strong>: las operaciones se guardan sólo en tu navegador.
-          </p>
-          <p class="mb-0 mt-2 small" v-else>
-            Estás en modo <strong>Blockchain</strong>: se intentará firmar con Freighter o SECRET_KEY.
-          </p>
-        </div>
 
         <!-- List plant for sale -->
         <div class="card mb-3 bg-light">
@@ -78,33 +65,25 @@
 </template>
 
 <script>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useStore } from 'vuex'
 import { listForSale, buyListing, getListing } from '@/soroban/client'
 
 export default {
   name: 'MarketPlace',
   setup() {
     const route = useRoute()
-    const store = useStore()
-    const storeMode = computed(() => store.state.mode || 'demo')
     const listForm = ref({ plantId: '', price: '' })
     const listings = ref([])
     const loading = ref(false)
     const status = ref(null)
 
     async function loadListings() {
-      // Load from localStorage demo data
       try {
         console.log('[MarketPlace] Cargando listados...')
-        const stored = localStorage.getItem('herbamed:listings')
-        if (stored) {
-          const data = JSON.parse(stored)
-          listings.value = Array.isArray(data) ? data : Object.values(data || {})
-        } else {
-          listings.value = []
-        }
+        // Cargar listados desde blockchain
+        // Por ahora retorna array vacío hasta implementar query al contrato
+        listings.value = []
         console.log('[MarketPlace] Listados cargados:', listings.value.length)
       } catch (e) {
         console.error('[MarketPlace] Error cargando listados:', e)
@@ -122,22 +101,8 @@ export default {
       loading.value = true
       try {
         console.log('[MarketPlace] Listando planta...')
-        if (storeMode.value === 'demo') {
-          // Demo mode: just save to localStorage
-          const stored = JSON.parse(localStorage.getItem('herbamed:listings') || '{}')
-          stored[listForm.value.plantId] = {
-            plantId: listForm.value.plantId,
-            price: listForm.value.price,
-            available: true,
-            listedAt: Date.now()
-          }
-          localStorage.setItem('herbamed:listings', JSON.stringify(stored))
-          status.value = { type: 'success', message: `✅ (DEMO) Planta ${listForm.value.plantId} listada` }
-        } else {
-          // Blockchain mode: call contract
-          const result = await listForSale(listForm.value.plantId, listForm.value.price)
-          status.value = { type: 'success', message: `✅ Planta listada. Tx: ${result.transactionHash}` }
-        }
+        const result = await listForSale(listForm.value.plantId, listForm.value.price)
+        status.value = { type: 'success', message: `✅ Planta listada en blockchain` }
         listForm.value = { plantId: '', price: '' }
         await loadListings()
       } catch (e) {
@@ -152,19 +117,8 @@ export default {
       loading.value = true
       try {
         console.log('[MarketPlace] Comprando planta:', plantId)
-        if (storeMode.value === 'demo') {
-          // Demo mode: mark as sold in localStorage
-          const stored = JSON.parse(localStorage.getItem('herbamed:listings') || '{}')
-          if (stored[plantId]) {
-            stored[plantId].available = false
-            localStorage.setItem('herbamed:listings', JSON.stringify(stored))
-            status.value = { type: 'success', message: `✅ (DEMO) Compraste ${plantId} por ${price} XLM` }
-          }
-        } else {
-          // Blockchain mode: call contract
-          const result = await buyListing(plantId, price)
-          status.value = { type: 'success', message: `✅ Compra exitosa. Tx: ${result.transactionHash}` }
-        }
+        const result = await buyListing(plantId, price)
+        status.value = { type: 'success', message: `✅ Compra exitosa en blockchain` }
         await loadListings()
       } catch (e) {
         status.value = { type: 'error', message: 'Error: ' + (e.message || e) }
@@ -177,11 +131,6 @@ export default {
       loadListings()
     })
 
-    // Recargar cuando cambia el modo global
-    watch(storeMode, () => {
-      loadListings()
-    })
-
     // Recargar cuando regresas a esta ruta
     watch(() => route.path, async (newPath) => {
       if (newPath === '/marketplace') {
@@ -190,7 +139,7 @@ export default {
       }
     })
 
-    return { storeMode, listForm, listings, loading, status, listPlant, buyPlant }
+    return { listForm, listings, loading, status, listPlant, buyPlant }
   }
 }
 </script>

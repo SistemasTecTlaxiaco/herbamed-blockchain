@@ -135,7 +135,6 @@ Actualmente no hay features activas en desarrollo. El sistema está en estado fu
 
 ### Pendiente (Roadmap Futuro)
 
-- [ ] Persistencia de sesión en localStorage
 - [ ] Refresh automático de balance
 - [ ] Historial de transacciones
 - [ ] Filtros y búsqueda en marketplace

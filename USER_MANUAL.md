@@ -23,7 +23,7 @@ Bienvenido a Herbamed, una DApp (aplicación descentralizada) para registrar, li
 2. Conecta tu wallet:
    - Si tienes Freighter: usa el botón **Conectar** en la sección de Wallet y sigue el flujo de la extensión.
    - Si no tienes Freighter y solo pruebas la DApp, puedes crear/importar una cuenta local en la pestaña Crear/Importar (la clave puede cifrarse localmente).
-3. Registrar Planta: ve a **Registrar Planta**, completa ID, nombre, descripción y ubicación y pulsa **Registrar**. (En modo demo, los datos se guardan también en `localStorage` para que veas los cambios inmediatamente.)
+3. Registrar Planta: ve a **Registrar Planta**, completa ID, nombre, descripción y ubicación y pulsa **Registrar**.
 4. Ver plantas: ve a **Plantas** para ver el listado actualizado.
 5. Listar / Comprar: desde la lista, pulsa **Listar** y define un precio; otro usuario podrá comprar.
 6. Votar: pulsa **Votar** para incrementar el contador de votos de una planta.
@@ -39,7 +39,6 @@ Bienvenido a Herbamed, una DApp (aplicación descentralizada) para registrar, li
 
 ## ¿Dónde se guarda la información?
 - En la red Soroban (cuando se envía una transacción real).
-- En modo demo/local, la UI también persiste temporalmente en `localStorage` (keys: `herbamed:plants`, `herbamed:listings`, `herbamed:votes`) para facilitar pruebas locales.
 
 ## Wallets y cuentas
 - **Freighter**: extensión que funciona como wallet; mantiene la clave privada en la extensión y solicita confirmación al firmar. Recomendado.

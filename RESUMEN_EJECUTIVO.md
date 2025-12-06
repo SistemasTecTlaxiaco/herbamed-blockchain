@@ -431,13 +431,7 @@ npm run build
 
 ### Prioridad Alta (P0)
 
-1. **Persistencia de Sesión**
-   - Guardar publicKey + authMethod en localStorage
-   - Auto-login al recargar página
-   - Session timeout (30 min)
-   - **Estimado:** 4 horas
-
-2. **Balance Auto-Refresh**
+1. **Balance Auto-Refresh**
    - Polling cada 30s cuando autenticado
    - Botón "Refrescar Balance" manual
    - Loading indicator
