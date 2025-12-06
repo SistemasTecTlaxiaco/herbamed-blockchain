@@ -65,44 +65,35 @@ export function getLocalSecret() {
   return ''
 }
 
-export async function connectWallet() {
+export async function connectWallet(retries = 3) {
   if (typeof window === 'undefined') return null
 
-  try {
-    // Modern Freighter requires explicit check first
-    // Try to detect if Freighter is installed
-    const hasFreighter = !!(window.freighterApi || window.stellar?.isConnected)
-    
-    if (!hasFreighter) {
-      // Wait a bit for injection
-      await new Promise(resolve => setTimeout(resolve, 500))
-      if (!window.freighterApi && !window.stellar?.isConnected) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 1) {
+        console.log(`[Freighter] Intento ${attempt}/${retries}...`)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+      }
+
+      // Get the correct Freighter API variant
+      const api = getFreighterAPI()
+      
+      if (!api) {
         throw new Error('Freighter extension not detected. Please install from https://freighter.app')
       }
-    }
 
-    // Use Freighter API
-    let api = window.freighterApi
-    
-    // If still no freighterApi, try stellar.isConnected pattern
-    if (!api && window.stellar?.isConnected) {
-      // Request access first
-      await window.stellar.isConnected()
-      api = window.freighterApi || window.stellar
+      // Request public key (this triggers permission popup in Freighter)
+      const pk = await api.getPublicKey()
+      if (!pk) throw new Error('No public key returned - did you reject the request?')
+      
+      console.log('[Freighter] ✅ Conectado exitosamente')
+      return pk
+    } catch (e) {
+      console.error(`[Freighter] Intento ${attempt} fallido:`, e.message)
+      if (attempt === retries) {
+        throw e
+      }
     }
-    
-    if (!api || !api.getPublicKey) {
-      throw new Error('Freighter API not available - try reloading the page')
-    }
-
-    // Request public key (this triggers permission popup in Freighter)
-    const pk = await api.getPublicKey()
-    if (!pk) throw new Error('No public key returned - did you reject the request?')
-    
-    return pk
-  } catch (e) {
-    console.error('Freighter connection error:', e)
-    throw e
   }
 }
 
@@ -210,25 +201,61 @@ export function isFreighterInstalled() {
   // Check for Freighter's injected API (multiple patterns for different versions)
   return !!(
     window.freighterApi ||
+    window.freighterAPI ||
     window.stellar?.isConnected ||
-    window.freighter
+    window.stellar?.freighter ||
+    window.freighter ||
+    window.__stellarFreighter
   )
+}
+
+// Helper to detect the correct Freighter API variant
+function getFreighterAPI() {
+  if (typeof window === 'undefined') return null
+  if (window.freighterApi?.getPublicKey) return window.freighterApi
+  if (window.freighterAPI?.getPublicKey) return window.freighterAPI
+  if (window.stellar?.getPublicKey) return window.stellar
+  if (window.freighter?.getPublicKey) return window.freighter
+  if (window.__stellarFreighter?.getPublicKey) return window.__stellarFreighter
+  return null
 }
 
 // Helper to wait for Freighter injection (called once on app mount)
 export function waitForFreighterInjection() {
   return new Promise((resolve) => {
     if (isFreighterInstalled()) {
+      console.log('[Freighter] Ya está instalada')
       resolve(true)
       return
     }
     
-    // Poll for max 3 seconds (reduced from 5)
+    // Event listener for active detection
+    const handleFreighterReady = () => {
+      console.log('[Freighter] Evento freighter#loaded detectado')
+      window.removeEventListener('freighter#loaded', handleFreighterReady)
+      clearInterval(interval)
+      resolve(true)
+    }
+    
+    window.addEventListener('freighter#loaded', handleFreighterReady)
+    
+    // Poll for max 10 seconds with exponential backoff
     let attempts = 0
+    const maxAttempts = 100
     const interval = setInterval(() => {
-      if (isFreighterInstalled() || attempts++ > 30) {
+      if (isFreighterInstalled()) {
+        console.log('[Freighter] Detectada tras', attempts * 100, 'ms')
+        window.removeEventListener('freighter#loaded', handleFreighterReady)
         clearInterval(interval)
-        resolve(isFreighterInstalled())
+        resolve(true)
+        return
+      }
+      if (attempts++ >= maxAttempts) {
+        console.warn('[Freighter] No detectada después de 10 segundos')
+        window.removeEventListener('freighter#loaded', handleFreighterReady)
+        clearInterval(interval)
+        resolve(false)
+        return
       }
     }, 100)
   })
