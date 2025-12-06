@@ -91,19 +91,61 @@
             <input v-model="createPasswordConfirm" type="password" class="form-control" placeholder="Repetir contraseña" />
           </div>
           <div class="d-flex gap-2">
-            <button class="btn btn-success btn-sm" @click="createAccount">Crear Cuenta</button>
-            <button class="btn btn-outline-secondary btn-sm" @click="generateOnly">Generar (no guardar)</button>
+            <button class="btn btn-success btn-sm" @click="createAccount" :disabled="fundingAccount">
+              <span v-if="fundingAccount" class="spinner-border spinner-border-sm me-2" role="status"></span>
+              {{ fundingAccount ? 'Fondeando...' : 'Crear Cuenta' }}
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" @click="generateOnly" :disabled="fundingAccount">
+              {{ fundingAccount ? 'Fondeando...' : 'Generar (no guardar)' }}
+            </button>
           </div>
 
-          <div v-if="newAccount" class="mt-3">
+          <div v-if="newAccount" class="mt-4">
             <hr />
-            <h5>Cuenta Generada</h5>
-            <p><strong>Public Key:</strong></p>
-            <pre class="p-2 bg-light small">{{ newAccount.publicKey }}</pre>
-            <p class="text-danger"><strong>Secret (guárdala en lugar seguro):</strong></p>
-            <pre class="p-2 bg-danger bg-opacity-10 small">{{ newAccount.secret }}</pre>
-            <p class="small text-muted">Escanea el QR para guardar en móvil (no compartas):</p>
-            <img :src="qrUrl(newAccount.secret)" alt="QR" style="max-width: 200px;" />
+            <h5 class="text-success">✅ Cuenta Generada Exitosamente</h5>
+            
+            <!-- Public Key -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">🔑 Clave Pública:</label>
+              <div class="input-group">
+                <input type="text" class="form-control font-monospace small" :value="newAccount.publicKey" readonly />
+                <button class="btn btn-outline-secondary" @click="copyToClipboard(newAccount.publicKey, 'public')" :disabled="copiedPublic">
+                  {{ copiedPublic ? '✅ Copiado' : '📋 Copiar' }}
+                </button>
+              </div>
+            </div>
+            
+            <!-- Stellar Expert Link -->
+            <div class="alert alert-info mb-3">
+              <strong>🔍 Ver en Blockchain:</strong><br/>
+              <a :href="`https://stellar.expert/explorer/testnet/account/${newAccount.publicKey}`" target="_blank" class="text-decoration-none fw-bold">
+                🌐 stellar.expert/explorer/testnet/account/{{ newAccount.publicKey.slice(0, 8) }}...
+              </a>
+              <div class="small text-muted mt-1">Balance actual: <strong>{{ balance }} XLM</strong></div>
+            </div>
+            
+            <!-- Secret Key -->
+            <div class="mb-3">
+              <label class="form-label fw-bold text-danger">⚠️ Clave Secreta (guárdala de forma segura):</label>
+              <div class="input-group">
+                <input type="text" class="form-control font-monospace small text-danger" :value="newAccount.secret" readonly />
+                <button class="btn btn-outline-danger" @click="copyToClipboard(newAccount.secret, 'secret')" :disabled="copiedSecret">
+                  {{ copiedSecret ? '✅ Copiado' : '📋 Copiar' }}
+                </button>
+              </div>
+              <div class="alert alert-warning mt-2 small">
+                <strong>⚠️ IMPORTANTE:</strong> Guarda esta clave en un lugar seguro. Nunca la compartas. Si la pierdes, no podrás recuperar tu cuenta.
+              </div>
+            </div>
+            
+            <!-- QR Code -->
+            <div class="mt-4 text-center">
+              <p class="small text-muted mb-2">Escanea el QR para guardar en móvil:</p>
+              <div v-if="generatingAccountQR" class="spinner-border spinner-border-sm text-info" role="status">
+                <span class="visually-hidden">Generando QR...</span>
+              </div>
+              <canvas v-else id="accountSecretQR" style="max-width: 260px; border: 2px solid #ddd; padding: 10px; background: white; border-radius: 8px; display: block; margin: 0 auto;"></canvas>
+            </div>
           </div>
         </div>
 
@@ -115,15 +157,30 @@
           <p class="text-muted">Pega tu clave secreta (empieza con 'S').</p>
           <div class="mb-3">
             <label class="form-label">Clave Secreta</label>
-            <input v-model="importSecret" type="text" class="form-control" placeholder="S..." />
+            <input v-model="importSecret" type="text" class="form-control font-monospace" placeholder="S..." />
           </div>
           <div class="mb-3">
             <label class="form-label">Guardar Cifrada (opcional)</label>
             <input v-model="importPassword" type="password" class="form-control" placeholder="Contraseña para cifrar" />
           </div>
+          
+          <!-- Opción de fondeo -->
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" v-model="fundImportedAccount" id="fundImported">
+            <label class="form-check-label" for="fundImported">
+              <strong>💰 Fondear con Friendbot</strong> (si la cuenta no existe aún)
+            </label>
+            <div class="small text-muted">Activa esto si es una cuenta nueva que necesita fondos testnet</div>
+          </div>
+          
           <div class="d-flex gap-2">
-            <button class="btn btn-primary btn-sm" @click="importAndSave">Importar y Guardar</button>
-            <button class="btn btn-outline-primary btn-sm" @click="importOnly">Solo Importar</button>
+            <button class="btn btn-primary btn-sm" @click="importAndSave" :disabled="fundingImport">
+              <span v-if="fundingImport" class="spinner-border spinner-border-sm me-1" role="status"></span>
+              {{ fundingImport ? 'Procesando...' : 'Importar y Guardar' }}
+            </button>
+            <button class="btn btn-outline-primary btn-sm" @click="importOnly" :disabled="fundingImport">
+              Solo Importar
+            </button>
           </div>
         </div>
 
@@ -147,37 +204,9 @@ import { useStore } from 'vuex'
 import { connectWallet, setLocalSecret, isFreighterInstalled, isRpcAvailable, waitForFreighterInjection } from '@/soroban/client'
 import { initializeWalletConnect, generateWalletConnectQR, getWalletConnectPublicKey, getActiveSession, disconnectWalletConnect } from '@/soroban/walletconnect'
 import { getAccountInfo } from '@/soroban/balance'
+import { encryptSecret, decryptSecret } from '@/soroban/crypto'
 import { Keypair } from '@stellar/stellar-sdk'
 import QRCode from 'qrcode'
-
-// Crypto helpers
-function buf2b64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))) }
-function b642buf(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)) }
-
-async function deriveKey(password, salt) {
-  const enc = new TextEncoder()
-  const passKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, passKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
-}
-
-async function encryptSecret(secret, password) {
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const key = await deriveKey(password, salt)
-  const enc = new TextEncoder()
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(secret))
-  return { salt: buf2b64(salt), iv: buf2b64(iv), data: buf2b64(ct) }
-}
-
-async function decryptSecret(payload, password) {
-  const salt = b642buf(payload.salt)
-  const iv = b642buf(payload.iv)
-  const data = b642buf(payload.data)
-  const key = await deriveKey(password, salt)
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data)
-  const dec = new TextDecoder()
-  return dec.decode(pt)
-}
 
 export default {
   name: 'LoginAdvanced',
@@ -191,6 +220,7 @@ export default {
     const newAccount = ref(null)
     const importSecret = ref('')
     const importPassword = ref('')
+    const fundImportedAccount = ref(false)
     const status = ref(null)
     const freighterText = ref('Detectando...')
     const rpcText = ref('...')
@@ -198,6 +228,11 @@ export default {
     const wcQRVisible = ref(false)
     const generatingQR = ref(false)
     const wcQRMessage = ref('Escanea con Freighter móvil')
+    const fundingAccount = ref(false)
+    const fundingImport = ref(false)
+    const copiedPublic = ref(false)
+    const copiedSecret = ref(false)
+    const generatingAccountQR = ref(false)
 
     const isAuthenticated = computed(() => store.state.isAuthenticated)
     const publicKey = computed(() => store.state.publicKey)
@@ -221,11 +256,6 @@ export default {
         console.warn('WalletConnect init failed (non-critical):', e.message)
       }
     })
-
-    function qrUrl(content) {
-      const encoded = encodeURIComponent(content)
-      return `https://chart.googleapis.com/chart?chs=240x240&cht=qr&chl=${encoded}`
-    }
 
     async function toggleWalletConnectQR() {
       if (wcQRVisible.value) {
@@ -288,6 +318,66 @@ export default {
       }
     }
 
+    async function fundAccountWithFriendbot(publicKey) {
+      try {
+        const response = await fetch(`https://friendbot.stellar.org?addr=${publicKey}`)
+        if (!response.ok) {
+          throw new Error(`Friendbot failed: ${response.status}`)
+        }
+        console.log('✅ Cuenta fondeada con Friendbot')
+        // Esperar un momento para que la transacción se propague
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return true
+      } catch (e) {
+        console.error('Error fondeando cuenta:', e)
+        throw e
+      }
+    }
+
+    async function copyToClipboard(text, type) {
+      try {
+        await navigator.clipboard.writeText(text)
+        if (type === 'public') {
+          copiedPublic.value = true
+          setTimeout(() => copiedPublic.value = false, 2000)
+        } else if (type === 'secret') {
+          copiedSecret.value = true
+          setTimeout(() => copiedSecret.value = false, 2000)
+        }
+      } catch (e) {
+        console.error('Error copiando:', e)
+        status.value = { type: 'error', message: 'Error al copiar al portapapeles' }
+      }
+    }
+
+    async function renderSecretQR() {
+      if (!newAccount.value) return
+      
+      generatingAccountQR.value = true
+      try {
+        await nextTick()
+        const canvas = document.getElementById('accountSecretQR')
+        if (!canvas) {
+          throw new Error('Canvas element no encontrado')
+        }
+        
+        await QRCode.toCanvas(canvas, newAccount.value.secret, {
+          width: 280,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        })
+        console.log('✅ QR de secret generado')
+      } catch (e) {
+        console.error('Error generando QR:', e)
+        status.value = { type: 'error', message: 'Error generando QR: ' + e.message }
+      } finally {
+        generatingAccountQR.value = false
+      }
+    }
+
     async function setSessionAsActive(pk, method) {
       store.commit('SET_PUBLIC_KEY', pk)
       store.commit('SET_AUTH_METHOD', method)
@@ -315,22 +405,50 @@ export default {
         return
       }
       try {
+        fundingAccount.value = true
         const kp = Keypair.random()
+        
+        // Fondear cuenta con Friendbot
+        status.value = { type: 'success', message: '⏳ Generando cuenta y fondeando con Friendbot...' }
+        await fundAccountWithFriendbot(kp.publicKey())
+        
+        // Guardar cuenta cifrada
         const payload = await encryptSecret(kp.secret(), createPassword.value)
         localStorage.setItem('herbamed:account', JSON.stringify(payload))
         setLocalSecret(kp.secret())
         newAccount.value = { secret: kp.secret(), publicKey: kp.publicKey() }
         await setSessionAsActive(kp.publicKey(), 'local-key')
-        status.value = { type: 'success', message: 'Cuenta creada y guardada cifrada.' }
+        
+        // Renderizar QR después de crear la cuenta
+        await renderSecretQR()
+        
+        status.value = { type: 'success', message: '✅ Cuenta creada, fondeada con 10,000 XLM (testnet) y guardada cifrada.' }
       } catch (e) {
         status.value = { type: 'error', message: 'Error: ' + e.message }
+      } finally {
+        fundingAccount.value = false
       }
     }
 
-    function generateOnly() {
-      const kp = Keypair.random()
-      newAccount.value = { secret: kp.secret(), publicKey: kp.publicKey() }
-      status.value = { type: 'success', message: 'Cuenta generada (no guardada).' }
+    async function generateOnly() {
+      try {
+        fundingAccount.value = true
+        status.value = { type: 'success', message: '⏳ Generando cuenta y fondeando con Friendbot...' }
+        
+        const kp = Keypair.random()
+        await fundAccountWithFriendbot(kp.publicKey())
+        
+        newAccount.value = { secret: kp.secret(), publicKey: kp.publicKey() }
+        
+        // Renderizar QR
+        await renderSecretQR()
+        
+        status.value = { type: 'success', message: '✅ Cuenta generada y fondeada (no guardada localmente).' }
+      } catch (e) {
+        status.value = { type: 'error', message: 'Error: ' + e.message }
+      } finally {
+        fundingAccount.value = false
+      }
     }
 
     async function loginLocal() {
@@ -363,24 +481,43 @@ export default {
         return
       }
       try {
+        fundingImport.value = true
         const kp = Keypair.fromSecret(importSecret.value)
+        
+        // Fondear si está marcado
+        if (fundImportedAccount.value) {
+          status.value = { type: 'success', message: '⏳ Fondeando cuenta con Friendbot...' }
+          await fundAccountWithFriendbot(kp.publicKey())
+        }
+        
         const payload = await encryptSecret(importSecret.value, importPassword.value)
         localStorage.setItem('herbamed:account', JSON.stringify(payload))
         setLocalSecret(importSecret.value)
         await setSessionAsActive(kp.publicKey(), 'local-key')
-        status.value = { type: 'success', message: 'Clave importada y guardada.' }
+        
+        const msg = fundImportedAccount.value 
+          ? '✅ Clave importada, fondeada y guardada.'
+          : '✅ Clave importada y guardada.'
+        status.value = { type: 'success', message: msg }
       } catch (e) {
         status.value = { type: 'error', message: 'Error: ' + e.message }
+      } finally {
+        fundingImport.value = false
       }
     }
 
     function importOnly() {
+      status.value = null
+      if (!importSecret.value) {
+        status.value = { type: 'error', message: 'Pega la clave secreta' }
+        return
+      }
       try {
         const kp = Keypair.fromSecret(importSecret.value)
         setLocalSecret(importSecret.value)
-        status.value = { type: 'success', message: 'Clave importada en memoria.' }
+        status.value = { type: 'success', message: '✅ Clave importada en memoria (solo esta sesión).' }
       } catch (e) {
-        status.value = { type: 'error', message: 'Error: ' + e.message }
+        status.value = { type: 'error', message: 'Clave inválida: ' + e.message }
       }
     }
 
@@ -436,20 +573,28 @@ export default {
       newAccount,
       importSecret,
       importPassword,
+      fundImportedAccount,
       status,
       freighterText,
       rpcText,
       wcQRUrl,
       wcQRVisible,
       generatingQR,
+      generatingAccountQR,
       wcQRMessage,
+      fundingAccount,
+      fundingImport,
+      copiedPublic,
+      copiedSecret,
       isAuthenticated,
       publicKey,
       balance,
       authMethodLabel,
-      qrUrl,
       toggleWalletConnectQR,
       handleQRError,
+      fundAccountWithFriendbot,
+      copyToClipboard,
+      renderSecretQR,
       createAccount,
       generateOnly,
       loginLocal,

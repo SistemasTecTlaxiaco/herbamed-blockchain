@@ -89,14 +89,58 @@ CA5C74SZ5XHXENOVQ454WQN66PMVSPMIZV5FYUR6OWDUQKC4PKOOXNPR
 **Duración:** 7 días (incluyó múltiples iteraciones)  
 **Resultado:** 3 métodos funcionales + QR WalletConnect
 
-#### Método 1: Clave Local Cifrada
+#### Método 1: Clave Local Cifrada + Fondeo Automático
 
 **Seguridad:**
 - PBKDF2 (100,000 iterations, SHA-256)
 - AES-GCM (256-bit)
 - Salt + IV únicos por encriptación
 
-**Flow:**
+**Fondeo Automático con Friendbot:**
+- ✅ Al crear cuenta → fondeo instantáneo con 10,000 XLM (testnet)
+- ✅ Integración con `https://friendbot.stellar.org`
+- ✅ Enlace directo a stellar.expert para verificación
+- ✅ Spinner de carga durante fondeo (2-3s)
+- ✅ Mensajes de estado: "⏳ Fondeando..." → "✅ Cuenta fondeada"
+
+**Ventaja sobre Stellar Laboratory:**
+- Todo integrado en la DApp (no requiere pasos externos)
+- Experiencia de usuario simplificada (un solo click)
+- Cuenta inmediatamente funcional y visible en blockchain
+
+**Optimizaciones y Mejoras de UI (v2.1.0):**
+
+1. **Módulo Crypto Refactorizado**
+   - Funciones de encriptación movidas a `src/soroban/crypto.js`
+   - Reutilizable en otros componentes
+   - Código más limpio y mantenible
+
+2. **Botones de Copiar con Feedback Visual**
+   - 📋 Click para copiar claves al portapapeles
+   - Confirmación visual: "✅ Copiado" (2s)
+   - Mejora UX en gestión de claves
+
+3. **Fondeo de Cuentas Importadas**
+   - Checkbox para fondear cuentas al importar
+   - Útil para cuentas generadas externamente
+   - Mismo proceso automático que crear cuenta
+
+4. **Balance en Tiempo Real**
+   - Actualiza automáticamente después de fondeo
+   - Visible en sección de cuenta activa
+   - Muestra en enlace a stellar.expert
+
+5. **Indicadores de Estado Mejorados**
+   - Spinners durante operaciones asíncronas
+   - Mensajes claros con emojis
+   - Deshabilita botones para evitar duplicados
+
+6. **Validaciones Robustas**
+   - Verificación de contraseñas antes de crear
+   - Validación de formato de claves al importar
+   - Manejo de errores detallado
+
+**Flow:****
 ```
 Password → deriveKey(PBKDF2) → AES-GCM encrypt → localStorage
                                      ↓

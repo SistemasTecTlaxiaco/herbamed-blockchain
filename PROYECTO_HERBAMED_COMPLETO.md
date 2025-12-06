@@ -449,8 +449,35 @@ VITE_APP_URL=http://localhost:3000
 2. Ingresa contraseña (mínimo 8 caracteres)
 3. Confirma contraseña
 4. Click "Crear Cuenta"
-5. **Guarda SECRET_KEY mostrado** (no lo pierdas)
-6. QR generado automáticamente para mobile
+5. **Automáticamente se fondea con Friendbot** (10,000 XLM testnet)
+6. **Guarda SECRET_KEY mostrado** (no lo pierdas)
+7. QR generado automáticamente para mobile
+8. **Enlace a stellar.expert** para ver la cuenta en blockchain
+
+**Fondeo Automático (Nuevo):**
+```javascript
+// Implementado en Login.vue
+async function fundAccountWithFriendbot(publicKey) {
+  const response = await fetch(`https://friendbot.stellar.org?addr=${publicKey}`)
+  // Fondea con 10,000 XLM de testnet
+  // Espera 2s para propagación
+}
+```
+
+**Características:**
+- ⚡ Fondeo instantáneo (2-3 segundos)
+- 💰 10,000 XLM de testnet
+- 🔗 Enlace directo a stellar.expert/explorer/testnet
+- ✅ Cuenta lista para usar inmediatamente
+- 🎯 Similar a Stellar Laboratory pero integrado
+
+**Mejoras de UI (Diciembre 2025):**
+- 📋 Botones de copiar para claves (pública/secreta)
+- 💰 Opción de fondear cuentas importadas
+- 📊 Balance en tiempo real después de fondeo
+- 🎨 Diseño mejorado con íconos y colores
+- ♻️ Código refactorizado (crypto.js separado)
+- ✅ Validaciones y mensajes de error mejorados
 
 #### Desbloquear Cuenta Existente
 

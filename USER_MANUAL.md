@@ -34,6 +34,8 @@ Bienvenido a Herbamed, una DApp (aplicación descentralizada) para registrar, li
 - Comprar — compra una planta listada (requiere firma).
 - Votar — registra un voto por una planta (requiere firma).
 - Conectar Wallet — conecta Freighter o usa clave local para firmar.
+- **Copiar Claves** — botones de un click para copiar clave pública/secreta al portapapeles.
+- **Fondear Cuenta Importada** — opción para fondear automáticamente cuentas nuevas al importar.
 
 ## ¿Dónde se guarda la información?
 - En la red Soroban (cuando se envía una transacción real).
@@ -43,6 +45,44 @@ Bienvenido a Herbamed, una DApp (aplicación descentralizada) para registrar, li
 - **Freighter**: extensión que funciona como wallet; mantiene la clave privada en la extensión y solicita confirmación al firmar. Recomendado.
 - **Clave local (`SECRET_KEY`)**: solo para pruebas y scripts locales. No la uses en producción.
 - **Crear cuenta**: la DApp permite generar un par de claves (Keypair) desde la UI — la secret puede cifrarse con una contraseña y guardarse en `localStorage`.
+
+### Fondeo Automático con Friendbot (Testnet)
+
+Cuando creas una cuenta nueva en la DApp, automáticamente se fondea con **10,000 XLM de testnet** usando el servicio Friendbot de Stellar. Esto significa que:
+
+- ✅ No necesitas ir a Stellar Laboratory para fondear manualmente
+- ✅ La cuenta es **inmediatamente funcional** en la blockchain
+- ✅ Puedes ver la cuenta en [stellar.expert](https://stellar.expert/explorer/testnet) desde el enlace que aparece
+- ✅ Los fondos son de testnet (no tienen valor real)
+
+**Proceso:**
+1. Ingresas tu contraseña → Click en "Crear Cuenta"
+2. La DApp genera el par de claves
+3. Automáticamente llama a `https://friendbot.stellar.org` para fondear
+4. Espera 2 segundos para que la transacción se propague
+5. Muestra tu cuenta con enlace directo a stellar.expert
+
+**Nota:** Este fondeo solo funciona en **testnet**. En mainnet necesitarías transferir XLM reales desde otra cuenta.
+
+### Mejoras de Interfaz de Usuario
+
+#### Botones de Copiar
+Cada clave (pública y secreta) tiene un botón "📋 Copiar" que:
+- Copia la clave al portapapeles con un solo click
+- Muestra confirmación visual: "✅ Copiado" por 2 segundos
+- Facilita guardar las claves en gestores de contraseñas
+
+#### Fondeo de Cuentas Importadas
+Al importar una clave secreta existente, puedes:
+- Marcar la casilla "💰 Fondear con Friendbot"
+- La DApp verificará y fondeará la cuenta si es necesario
+- Útil para importar cuentas nuevas generadas externamente
+
+#### Indicadores Visuales
+- Spinners de carga durante fondeo
+- Mensajes de estado claros con emojis
+- Balance actualizado en tiempo real
+- Alertas con códigos de color (verde=éxito, rojo=error, azul=info)
 
 ## Roles en la DApp
 - Usuario: registra, lista, vota, compra.
