@@ -81,6 +81,11 @@ export async function connectWallet(retries = 3) {
       if (!api) {
         throw new Error('Freighter extension not detected. Please install from https://freighter.app')
       }
+      
+      // Verificar que la API tenga getPublicKey
+      if (typeof api.getPublicKey !== 'function') {
+        throw new Error('Freighter API incomplete - getPublicKey not available yet')
+      }
 
       // Request public key (this triggers permission popup in Freighter)
       const pk = await api.getPublicKey()
@@ -199,7 +204,7 @@ export async function voteForPlant(id) {
 export function isFreighterInstalled() {
   if (typeof window === 'undefined') return false
   // Check for Freighter's injected API (multiple patterns for different versions)
-  return !!(
+  const detected = !!(
     window.freighterApi ||
     window.freighterAPI ||
     window.stellar?.isConnected ||
@@ -207,16 +212,41 @@ export function isFreighterInstalled() {
     window.freighter ||
     window.__stellarFreighter
   )
+  
+  if (detected) {
+    console.log('[Freighter] API detectada:', {
+      freighterApi: !!window.freighterApi,
+      freighterAPI: !!window.freighterAPI,
+      stellar_isConnected: !!window.stellar?.isConnected,
+      stellar_freighter: !!window.stellar?.freighter,
+      freighter: !!window.freighter,
+      __stellarFreighter: !!window.__stellarFreighter,
+      freighterApi_getPublicKey: typeof window.freighterApi?.getPublicKey,
+      stellar_getPublicKey: typeof window.stellar?.getPublicKey
+    })
+  }
+  
+  return detected
 }
 
 // Helper to detect the correct Freighter API variant
 function getFreighterAPI() {
   if (typeof window === 'undefined') return null
+  // Primero intenta obtener la API que tenga getPublicKey
   if (window.freighterApi?.getPublicKey) return window.freighterApi
   if (window.freighterAPI?.getPublicKey) return window.freighterAPI
   if (window.stellar?.getPublicKey) return window.stellar
   if (window.freighter?.getPublicKey) return window.freighter
   if (window.__stellarFreighter?.getPublicKey) return window.__stellarFreighter
+  
+  // Si no encuentra con getPublicKey, devuelve cualquier objeto Freighter que exista
+  // (puede que getPublicKey se agregue después)
+  if (window.freighterApi) return window.freighterApi
+  if (window.freighterAPI) return window.freighterAPI
+  if (window.stellar?.request) return window.stellar
+  if (window.freighter) return window.freighter
+  if (window.__stellarFreighter) return window.__stellarFreighter
+  
   return null
 }
 
