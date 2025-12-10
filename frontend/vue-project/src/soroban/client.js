@@ -413,7 +413,6 @@ export async function getPlant(plantId) {
     return null
   }
 }
-}
 
 export async function getPlantVotes(plantId) {
   // Query contract for vote count
