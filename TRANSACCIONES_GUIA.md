@@ -1,490 +1,502 @@
-# 🔄 Guía de Transacciones en HerbaMed
+# 📘 Guía de Transacciones - HerbaMed DApp
 
-**Última actualización:** 10 de Diciembre, 2025
+**Fecha:** 10 de Diciembre, 2025  
+**Versión:** 1.0.0
 
-## 📋 Índice
+---
+
+## 📋 ÍNDICE
 
 1. [Descripción General](#descripción-general)
-2. [Flujo de Transacciones](#flujo-de-transacciones)
-3. [Operaciones Disponibles](#operaciones-disponibles)
-4. [Implementación Técnica](#implementación-técnica)
-5. [Pruebas en Testnet](#pruebas-en-testnet)
+2. [Funciones del Contrato](#funciones-del-contrato)
+3. [Flujos de Usuario](#flujos-de-usuario)
+4. [Implementación en Frontend](#implementación-en-frontend)
+5. [Ejemplos de Uso](#ejemplos-de-uso)
+6. [Debugging y Logs](#debugging-y-logs)
 
 ---
 
-## 📖 Descripción General
+## 📖 DESCRIPCIÓN GENERAL
 
-HerbaMed utiliza **Stellar Testnet** con **Soroban smart contracts** para registrar todas las transacciones en blockchain. Cada operación (registrar planta, votar, comprar) genera una transacción firmada que se envía a la red.
+HerbaMed utiliza un smart contract Soroban desplegado en **Stellar Testnet** con las siguientes funcionalidades principales:
 
-### Arquitectura de Transacciones
+- ✅ Registro de plantas medicinales
+- ✅ Sistema de votación por validadores
+- ✅ Marketplace (listar/comprar plantas)
+- ✅ Queries de datos (plantas, votos, listings)
 
+**Contract Address:**  
 ```
-Usuario (Frontend)
-    ↓
-Wallet (Freighter/Clave Local)
-    ↓
-Cliente Soroban (client.js)
-    ↓
-TX Builder Service (opcional)
-    ↓
-Firma de Transacción
-    ↓
-Soroban RPC (Stellar Testnet)
-    ↓
-Smart Contract
-    ↓
-Confirmación en Blockchain
+CA5C74SZ5XHXENOVQ454WQN66PMVSPMIZV5FYUR6OWDUQKC4PKOOXNPR
+```
+
+**RPC Endpoint:**  
+```
+https://soroban-testnet.stellar.org
 ```
 
 ---
 
-## 🔄 Flujo de Transacciones
+## 🔧 FUNCIONES DEL CONTRATO
 
-### 1. Preparación de la Transacción
+### 1. **register_plant**
+Registra una nueva planta en blockchain.
 
+**Signature Rust:**
+```rust
+pub fn register_plant(
+    env: &Env,
+    id: String,
+    name: String,
+    scientific_name: String,
+    properties: Vec<String>,
+) -> String
+```
+
+**Frontend (client.js):**
 ```javascript
-// Ejemplo: Registrar una planta
-const plantData = {
+export async function registerPlant(plantData) {
+  const id = plantData.id || `PLANT-${Date.now()}`
+  const name = plantData.name || ''
+  const scientificName = plantData.scientificName || ''
+  const properties = Array.isArray(plantData.properties) ? plantData.properties : []
+  
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'register_plant', 
+    args: [id, name, scientificName, properties] 
+  })
+  
+  return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
+}
+```
+
+**Ejemplo de Uso:**
+```javascript
+const result = await soroban.registerPlant({
   id: 'MNZ-001',
   name: 'Manzanilla',
   scientificName: 'Matricaria chamomilla',
-  properties: ['Antiinflamatoria', 'Calmante', 'Digestiva']
-}
+  properties: ['Antiinflamatoria', 'Sedante', 'Digestiva']
+})
 
-// El cliente prepara la operación
-const operation = {
-  contractId: CONTRACT_ADDRESS,
-  method: 'register_plant',
-  args: [plantData.id, plantData.name, plantData.scientificName, plantData.properties]
+console.log('Hash:', result.transactionHash)
+```
+
+---
+
+### 2. **vote_for_plant**
+Permite a validadores votar por una planta. Cuando los votos superan el 50% de validadores, la planta se marca como `validated: true`.
+
+**Signature Rust:**
+```rust
+pub fn vote_for_plant(
+    env: &Env, 
+    plant_id: String, 
+    validator: Address
+) -> i128
+```
+
+**Frontend (client.js):**
+```javascript
+export async function voteForPlant(plantId) {
+  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  if (!publicKey) throw new Error('No hay cuenta conectada para votar')
+  
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'vote_for_plant', 
+    args: [plantId, publicKey] 
+  })
+  
+  return { success: true, plantId, transactionHash: resp?.hash || 'pending' }
 }
 ```
 
-### 2. Construcción del XDR
-
+**Ejemplo de Uso:**
 ```javascript
-// Se construye el XDR unsigned (Transaction Envelope)
-const unsignedXDR = await buildUnsignedXDR(operation, publicKey)
+const result = await soroban.voteForPlant('MNZ-001')
+console.log('Votos registrados. Hash:', result.transactionHash)
 ```
 
-### 3. Firma de la Transacción
+---
 
-**Con Freighter:**
-```javascript
-const signedXDR = await window.freighterApi.signTransaction(
-  unsignedXDR, 
-  Networks.TESTNET
+### 3. **list_for_sale**
+Lista una planta en el marketplace con un precio.
+
+**Signature Rust:**
+```rust
+pub fn list_for_sale(
+    env: &Env, 
+    plant_id: String, 
+    seller: Address, 
+    price: i128
 )
 ```
 
-**Con Clave Local:**
+**Frontend (client.js):**
 ```javascript
-const tx = new Transaction(unsignedXDR, Networks.TESTNET)
-tx.sign(keypair)
-const signedXDR = tx.toXDR()
+export async function listForSale(plantId, price) {
+  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  if (!publicKey) throw new Error('No hay cuenta conectada para listar planta')
+  
+  const priceNum = parseInt(price, 10)
+  if (isNaN(priceNum) || priceNum <= 0) throw new Error('Precio inválido')
+  
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'list_for_sale', 
+    args: [plantId, publicKey, priceNum] 
+  })
+  
+  return { success: true, plantId, price: priceNum, transactionHash: resp?.hash || 'pending' }
+}
 ```
 
-### 4. Envío a la Red
-
+**Ejemplo de Uso:**
 ```javascript
-const response = await fetch(`${RPC_URL}/send_transaction`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ tx: signedXDR })
-})
-
-const result = await response.json()
-// result.hash = transaction hash en blockchain
+const result = await soroban.listForSale('MNZ-001', 100) // 100 XLM
+console.log('Planta listada. Hash:', result.transactionHash)
 ```
 
 ---
 
-## 🛠️ Operaciones Disponibles
+### 4. **buy_listing**
+Compra una planta listada en el marketplace.
 
-### 1. Registrar Planta
+**Signature Rust:**
+```rust
+pub fn buy_listing(
+    env: &Env, 
+    plant_id: String, 
+    buyer: Address
+) -> Result<bool, MedicinalPlantsError>
+```
 
-**Función del contrato:** `register_plant(env, id: String, name: String, scientific_name: String, properties: Vec<String>) -> String`
-
-**Cliente JS:**
+**Frontend (client.js):**
 ```javascript
-import { registerPlant } from '@/soroban/client'
+export async function buyListing(plantId) {
+  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  if (!publicKey) throw new Error('No hay cuenta conectada para comprar')
+  
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'buy_listing', 
+    args: [plantId, publicKey] 
+  })
+  
+  return { success: true, plantId, transactionHash: resp?.hash || 'pending' }
+}
+```
 
-const result = await registerPlant({
+**Ejemplo de Uso:**
+```javascript
+const result = await soroban.buyListing('MNZ-001')
+console.log('Compra exitosa. Hash:', result.transactionHash)
+```
+
+---
+
+### 5. **get_plant** (Query)
+Consulta los datos de una planta específica.
+
+**Signature Rust:**
+```rust
+pub fn get_plant(env: &Env, id: String) -> Option<MedicinalPlant>
+```
+
+**Frontend (client.js):**
+```javascript
+export async function getPlant(plantId) {
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'get_plant', 
+    args: [plantId],
+    readOnly: true
+  })
+  return resp || null
+}
+```
+
+**Ejemplo de Uso:**
+```javascript
+const plant = await soroban.getPlant('MNZ-001')
+console.log('Planta:', plant)
+// { id: 'MNZ-001', name: 'Manzanilla', validated: true, ... }
+```
+
+---
+
+### 6. **is_validator** (Query)
+Verifica si una dirección es validador.
+
+**Signature Rust:**
+```rust
+pub fn is_validator(env: &Env, validator: Address) -> bool
+```
+
+**Frontend (client.js):**
+```javascript
+export async function isValidator(address) {
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'is_validator', 
+    args: [address],
+    readOnly: true
+  })
+  return !!resp
+}
+```
+
+---
+
+## 🔄 FLUJOS DE USUARIO
+
+### Flujo 1: Registrar Planta
+
+```
+Usuario → Login.vue (conectar wallet)
+       → PlantRegistration.vue (formulario)
+       → client.js.registerPlant()
+       → submitOperation() 
+       → Firma con Freighter/Clave Local
+       → RPC Soroban
+       → Blockchain ✅
+```
+
+**Componente:** `/views/plants/PlantRegistration.vue`
+
+**Código:**
+```javascript
+const registerPlant = async () => {
+  await soroban.registerPlant({
+    id: plant.value.id,
+    name: plant.value.name,
+    scientificName: plant.value.scientificName,
+    properties: plant.value.properties
+  })
+  router.push('/plants')
+}
+```
+
+---
+
+### Flujo 2: Votar por Planta
+
+```
+Usuario → PlantList.vue (click botón "Votar")
+       → client.js.voteForPlant(plantId)
+       → Verifica que el usuario esté conectado
+       → submitOperation()
+       → Firma transacción
+       → Blockchain actualiza contador de votos ✅
+```
+
+**Componente:** `/views/plants/PlantList.vue`
+
+**Código:**
+```javascript
+const voteForPlant = async (plantId) => {
+  try {
+    const result = await soroban.voteForPlant(plantId)
+    status.value = {
+      type: 'success',
+      message: `✅ Voto registrado. Hash: ${result.transactionHash}`
+    }
+    setTimeout(() => loadPlants(), 2000)
+  } catch (error) {
+    status.value = {
+      type: 'danger',
+      message: `❌ Error: ${error.message}`
+    }
+  }
+}
+```
+
+---
+
+### Flujo 3: Listar Planta en Marketplace
+
+```
+Usuario → MarketPlace.vue (formulario "Listar")
+       → Ingresa ID y precio
+       → client.js.listForSale(plantId, price)
+       → Verifica cuenta conectada
+       → submitOperation()
+       → Blockchain crea Listing ✅
+```
+
+**Componente:** `/components/plants/MarketPlace.vue`
+
+**Código:**
+```javascript
+async function listPlant() {
+  const result = await listForSale(listForm.value.plantId, listForm.value.price)
+  status.value = { type: 'success', message: `✅ Planta listada` }
+  await loadListings()
+}
+```
+
+---
+
+### Flujo 4: Comprar Planta
+
+```
+Usuario → MarketPlace.vue (click "Comprar")
+       → client.js.buyListing(plantId)
+       → Verifica cuenta conectada
+       → submitOperation()
+       → Blockchain marca available: false ✅
+       → Transfiere tokens (placeholder)
+```
+
+**Componente:** `/components/plants/MarketPlace.vue`
+
+**Código:**
+```javascript
+async function buyPlant(plantId) {
+  const result = await buyListing(plantId)
+  status.value = { type: 'success', message: `✅ Compra exitosa` }
+  await loadListings()
+}
+```
+
+---
+
+## 🛠️ IMPLEMENTACIÓN EN FRONTEND
+
+### Arquitectura de Client.js
+
+```
+client.js
+│
+├─ connectWallet() ───────────────> Freighter/Clave Local
+│
+├─ submitOperation(operation) ────> Builder Service/RPC
+│   ├─ buildUnsignedXDR()
+│   ├─ Firma (Freighter/Local)
+│   └─ submitTx()
+│
+├─ registerPlant()
+├─ voteForPlant()
+├─ listForSale()
+├─ buyListing()
+├─ getPlant()
+├─ isValidator()
+└─ getPlantVotes()
+```
+
+### Validación de Cuenta Conectada
+
+Todas las funciones de transacción verifican:
+
+```javascript
+const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+if (!publicKey) throw new Error('No hay cuenta conectada')
+```
+
+---
+
+## 📝 EJEMPLOS DE USO
+
+### Ejemplo Completo: Registro + Voto + Marketplace
+
+```javascript
+// 1. Conectar wallet
+const pk = await soroban.connectWallet()
+console.log('Conectado:', pk)
+
+// 2. Registrar planta
+const plant = await soroban.registerPlant({
   id: 'MNZ-001',
   name: 'Manzanilla',
   scientificName: 'Matricaria chamomilla',
-  properties: ['Antiinflamatoria', 'Calmante']
+  properties: ['Antiinflamatoria', 'Sedante']
 })
+console.log('Planta registrada:', plant.transactionHash)
 
-console.log('TX Hash:', result.transactionHash)
-```
+// 3. Votar por la planta
+const vote = await soroban.voteForPlant('MNZ-001')
+console.log('Voto registrado:', vote.transactionHash)
 
-**Requisitos:**
-- ✅ Cuenta autenticada (Freighter o clave local)
-- ✅ Balance suficiente en testnet (para fees)
-- ✅ ID único de planta
+// 4. Listar en marketplace
+const listing = await soroban.listForSale('MNZ-001', 100)
+console.log('Planta listada:', listing.transactionHash)
 
-**Resultado:**
-- Planta registrada en blockchain
-- Hash de transacción disponible
-- Estado: `validated = false` (pendiente de votos)
-
----
-
-### 2. Votar por Planta
-
-**Función del contrato:** `vote_for_plant(env, plant_id: String, validator: Address) -> i128`
-
-**Cliente JS:**
-```javascript
-import { voteForPlant } from '@/soroban/client'
-
-const result = await voteForPlant('MNZ-001')
-console.log('Votos actuales:', result)
-```
-
-**Requisitos:**
-- ✅ Cuenta autenticada
-- ✅ Ser validador registrado (o auto-registrarse)
-- ✅ No haber votado previamente por esta planta
-
-**Lógica del contrato:**
-```rust
-// Verifica que no haya votado antes
-if voted[plant_id][validator] == true {
-  return error_already_voted
-}
-
-// Marca como votado
-voted[plant_id][validator] = true
-
-// Incrementa contador
-votes[plant_id] += 1
-
-// Si > 50% validadores, marca como validada
-if votes[plant_id] * 2 > total_validators {
-  plant.validated = true
-}
-
-return votes[plant_id]
-```
-
-**Resultado:**
-- Voto registrado en blockchain
-- Contador incrementado
-- Si alcanza quorum (>50%), planta se valida automáticamente
-
----
-
-### 3. Listar para Venta
-
-**Función del contrato:** `list_for_sale(env, plant_id: String, seller: Address, price: i128)`
-
-**Cliente JS:**
-```javascript
-import { listForSale } from '@/soroban/client'
-
-const result = await listForSale('MNZ-001', 1000000) // 1 XLM = 10,000,000 stroops
-```
-
-**Requisitos:**
-- ✅ Cuenta autenticada
-- ✅ Planta registrada previamente
-- ✅ Precio en stroops (1 XLM = 10^7 stroops)
-
-**Resultado:**
-- Listing creado en blockchain
-- Planta visible en Marketplace
-- Estado: `available = true`
-
----
-
-### 4. Comprar Planta
-
-**Función del contrato:** `buy_listing(env, plant_id: String, buyer: Address) -> Result<bool, Error>`
-
-**Cliente JS:**
-```javascript
-import { buyListing } from '@/soroban/client'
-
-const result = await buyListing('MNZ-001')
-console.log('Compra exitosa:', result.success)
-```
-
-**Requisitos:**
-- ✅ Cuenta autenticada
-- ✅ Planta listada (available = true)
-- ✅ Balance suficiente para el precio + fees
-
-**Lógica del contrato:**
-```rust
-// Verifica disponibilidad
-if !listing.available {
-  return Err(NotAvailable)
-}
-
-// Transfiere tokens (placeholder - implementar con Stellar assets)
-transfer_tokens(buyer, seller, listing.price)?
-
-// Marca como vendida
-listing.available = false
-
-return Ok(true)
-```
-
-**Resultado:**
-- Transferencia de tokens ejecutada
-- Listing marcado como vendido
-- Propiedad transferida
-
----
-
-## 💻 Implementación Técnica
-
-### Archivo Principal: `client.js`
-
-```javascript
-// Estructura de submitOperation
-async function submitOperation(operation) {
-  // 1. Obtener clave pública del usuario conectado
-  const publicKey = getConnectedPublicKey()
-  
-  // 2. Construir XDR unsigned
-  const unsignedXDR = await buildUnsignedXDR(operation, publicKey)
-  
-  // 3. Firmar con Freighter o clave local
-  let signedXDR
-  if (window.freighterApi) {
-    signedXDR = await window.freighterApi.signTransaction(
-      unsignedXDR,
-      Networks.TESTNET
-    )
-  } else {
-    const keypair = getLocalKeypair()
-    const tx = new Transaction(unsignedXDR, Networks.TESTNET)
-    tx.sign(keypair)
-    signedXDR = tx.toXDR()
-  }
-  
-  // 4. Enviar a RPC
-  const response = await submitTx(signedXDR)
-  
-  return response
-}
-```
-
-### TX Builder Service (Opcional)
-
-Si está configurado `TX_BUILDER_URL`, se usa un servicio externo para construir XDRs:
-
-```javascript
-const response = await fetch(`${TX_BUILDER_URL}/build_invoke`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    contractId: CONTRACT_ADDRESS,
-    method: 'register_plant',
-    args: ['MNZ-001', 'Manzanilla', ...],
-    publicKey: 'GXXX...',
-    network: 'testnet'
-  })
-})
-
-const { xdr } = await response.json()
+// 5. Comprar (desde otra cuenta)
+const purchase = await soroban.buyListing('MNZ-001')
+console.log('Compra exitosa:', purchase.transactionHash)
 ```
 
 ---
 
-## 🧪 Pruebas en Testnet
+## 🐛 DEBUGGING Y LOGS
 
-### 1. Configuración Inicial
+### Logs en Console
 
-```bash
-# Fondear cuenta con Friendbot
-curl "https://friendbot.stellar.org/?addr=YOUR_PUBLIC_KEY"
+Todas las funciones imprimen logs detallados:
 
-# Verificar balance
-curl "https://horizon-testnet.stellar.org/accounts/YOUR_PUBLIC_KEY"
+```javascript
+[registerPlant] Enviando: { id, name, scientificName, properties }
+[voteForPlant] Votando por planta: MNZ-001 con validador: GXXX...
+[listForSale] Listando planta: MNZ-001 precio: 100 vendedor: GXXX...
+[buyListing] Comprando planta: MNZ-001 comprador: GXXX...
 ```
 
-### 2. Ejecutar Transacción de Prueba
+### Verificar en Stellar Explorer
 
-**Paso 1: Conectar Wallet**
-- Ve a http://127.0.0.1:3000/login
-- Conecta con Freighter o importa clave local
-- Verifica que aparezca tu balance
+Cada transacción retorna un hash. Puedes verificarlo en:
 
-**Paso 2: Registrar Planta**
-- Ve a "Registrar Planta"
-- Completa formulario:
-  ```
-  ID: TEST-001
-  Nombre: Planta de Prueba
-  Nombre Científico: Testus Plantae
-  Propiedades: [Prueba, Testnet]
-  ```
-- Click en "Registrar Planta"
-- Confirma en Freighter (si usas extensión)
-- Espera confirmación
-
-**Paso 3: Verificar en Blockchain**
-```bash
-# Ver transacción en Stellar Expert
-https://stellar.expert/explorer/testnet/tx/TRANSACTION_HASH
-
-# O en Horizon API
-curl "https://horizon-testnet.stellar.org/transactions/TRANSACTION_HASH"
+```
+https://stellar.expert/explorer/testnet/tx/{TRANSACTION_HASH}
 ```
 
-**Paso 4: Votar por Planta**
-- Ve a "Lista de Plantas"
-- Encuentra "TEST-001"
-- Click en "👍 Votar por esta planta"
-- Confirma transacción
-- Verifica que el contador de votos incremente
+### Errores Comunes
 
-**Paso 5: Listar en Marketplace**
-- Ve a "Marketplace"
-- Completa formulario:
-  ```
-  ID de planta: TEST-001
-  Precio: 10 XLM
-  ```
-- Click en "Listar para venta"
-- Confirma transacción
-
-**Paso 6: Comprar (con otra cuenta)**
-- Cambia a otra cuenta (otra clave o wallet)
-- Ve a Marketplace
-- Click en "Comprar" en TEST-001
-- Confirma transacción
+| Error | Causa | Solución |
+|-------|-------|----------|
+| `No hay cuenta conectada` | Usuario no hizo login | Ir a `/login` y conectar |
+| `Freighter extension not detected` | Extensión no instalada | Instalar desde freighter.app |
+| `Precio inválido` | Precio <= 0 o NaN | Ingresar número positivo |
+| `Already voted` | Validador ya votó | Solo se puede votar una vez |
+| `Not available` | Planta ya vendida | Listar otra planta |
 
 ---
 
-## 📊 Estados de Transacción
+## ✅ CHECKLIST DE TESTING
 
-### Pending
-```javascript
-{
-  status: 'pending',
-  hash: null,
-  message: 'Transacción en construcción...'
-}
-```
+### Registro de Plantas
+- [ ] Registrar planta con propiedades válidas
+- [ ] Verificar que aparece en `/plants`
+- [ ] Verificar hash en Stellar Explorer
 
-### Signed
-```javascript
-{
-  status: 'signed',
-  hash: 'ABC123...',
-  message: 'Firmada, enviando a red...'
-}
-```
+### Votación
+- [ ] Votar como validador
+- [ ] Verificar incremento de contador
+- [ ] Intentar votar dos veces (debe fallar)
 
-### Confirmed
-```javascript
-{
-  status: 'confirmed',
-  hash: 'ABC123...',
-  ledger: 12345,
-  message: '✅ Confirmada en blockchain'
-}
-```
+### Marketplace
+- [ ] Listar planta con precio válido
+- [ ] Verificar que aparece en listings
+- [ ] Comprar planta
+- [ ] Verificar que `available: false` después de compra
 
-### Failed
-```javascript
-{
-  status: 'failed',
-  error: 'Insufficient funds',
-  message: '❌ Transacción fallida'
-}
-```
+### Queries
+- [ ] Consultar planta por ID
+- [ ] Verificar contador de votos
+- [ ] Verificar estado de validator
 
 ---
 
-## 🔍 Debugging de Transacciones
+## 📚 RECURSOS
 
-### Ver Logs en Consola
-
-```javascript
-// Activar logs detallados
-localStorage.setItem('DEBUG', 'soroban:*')
-
-// En client.js verás:
-[registerPlant] Enviando: {...}
-[submitOperation] Building XDR...
-[submitOperation] Signing with Freighter...
-[submitTx] Sending to RPC...
-[submitTx] Response: {...}
-```
-
-### Verificar en Stellar Expert
-
-```
-https://stellar.expert/explorer/testnet/account/YOUR_PUBLIC_KEY
-```
-
-Muestra:
-- Todas las transacciones
-- Balances
-- Operaciones ejecutadas
-- Contract invocations
-
-### Verificar Balance de Fees
-
-```javascript
-import { getBalance } from '@/soroban/balance'
-
-const balance = await getBalance(publicKey)
-console.log('Balance:', balance, 'XLM')
-
-// Mínimo recomendado: 10 XLM para fees
-```
+- **Stellar Docs:** https://developers.stellar.org/
+- **Soroban Docs:** https://soroban.stellar.org/docs
+- **Freighter Wallet:** https://freighter.app
+- **Stellar Explorer:** https://stellar.expert/explorer/testnet
+- **Laboratory:** https://laboratory.stellar.org/
 
 ---
 
-## ⚠️ Errores Comunes
-
-### 1. "Insufficient Funds"
-**Causa:** Balance muy bajo para fees  
-**Solución:** Fondear con Friendbot
-
-```bash
-curl "https://friendbot.stellar.org/?addr=YOUR_PUBLIC_KEY"
-```
-
-### 2. "Transaction Failed: op_already_exists"
-**Causa:** Intentando registrar planta con ID duplicado  
-**Solución:** Usar ID único
-
-### 3. "Not Authorized"
-**Causa:** No estás autenticado  
-**Solución:** Conectar wallet en /login
-
-### 4. "Freighter extension not detected"
-**Causa:** Extensión no instalada o bloqueada  
-**Solución:** Ver FREIGHTER_FIX.md
-
-### 5. "Builder service unavailable"
-**Causa:** TX_BUILDER_URL no configurado o caído  
-**Solución:** Verificar config o usar construcción local
-
----
-
-## 🚀 Próximos Pasos
-
-- [ ] Implementar queries con `simulateTransaction` para leer datos
-- [ ] Agregar sistema de eventos del contrato
-- [ ] Implementar indexación off-chain para listas de plantas
-- [ ] Mejorar UI de confirmación de transacciones
-- [ ] Agregar estimación de fees antes de enviar
-- [ ] Implementar retry automático en fallos de red
-
----
-
-## 📚 Referencias
-
-- [Stellar SDK JS](https://stellar.github.io/js-stellar-sdk/)
-- [Soroban Docs](https://soroban.stellar.org/)
-- [Freighter Wallet](https://freighter.app/)
-- [Stellar Expert](https://stellar.expert/explorer/testnet)
-- [Horizon API](https://developers.stellar.org/api/horizon)
+**Última actualización:** 10 de Diciembre, 2025  
+**Autor:** HerbaMed Team

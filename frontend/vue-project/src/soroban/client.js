@@ -169,50 +169,61 @@ export async function submitOperation(operation = {}) {
 
 export async function registerPlant(plantData) {
   // Register plant in blockchain via contract
-  // Contract signature: register_plant(env, id: String, name: String, scientific_name: String, properties: Vec<String>)
+  // Contract signature: register_plant(id: String, name: String, scientific_name: String, properties: Vec<String>)
+  const plant = plantData || {}
+  const id = plant.id || `PLANT-${Date.now()}`
+  const name = plant.name || ''
+  const scientificName = plant.scientificName || plant.scientific_name || ''
+  const properties = Array.isArray(plant.properties) ? plant.properties : []
   
-  const plant = {
-    id: plantData.id || String(Date.now()),
-    name: plantData.name || '',
-    scientificName: plantData.scientificName || '',
-    properties: plantData.properties || []
-  }
-  
-  console.log('[registerPlant] Enviando:', plant)
+  console.log('[registerPlant] Enviando:', { id, name, scientificName, properties })
   
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'register_plant', 
-    args: [
-      plant.id,
-      plant.name,
-      plant.scientificName,
-      plant.properties
-    ]
+    args: [id, name, scientificName, properties] 
   })
   
-  return { success: true, plantId: plant.id, transactionHash: resp?.hash || 'pending' }
+  return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
 }
 
 export async function getAllPlants() {
   // Query contract for all plants
-  // Por ahora retorna array vacío hasta implementar query
+  // Por ahora retorna array vacío hasta implementar query real con RPC
+  // TODO: Implementar llamada a get_plant para cada ID conocido
   return []
 }
 
-export async function voteForPlant(plantId) {
-  // Contract signature: vote_for_plant(env, plant_id: String, validator: Address) -> i128
-  const publicKey = getConnectedPublicKey()
-  if (!publicKey) {
-    throw new Error('No hay cuenta conectada para votar')
+export async function getPlant(plantId) {
+  // Query contract for specific plant
+  // Contract signature: get_plant(id: String) -> Option<MedicinalPlant>
+  try {
+    console.log('[getPlant] Consultando planta:', plantId)
+    const resp = await submitOperation({ 
+      contractId: CONTRACT_ADDRESS, 
+      method: 'get_plant', 
+      args: [plantId],
+      readOnly: true // Query, no transaction
+    })
+    return resp || null
+  } catch (e) {
+    console.error('[getPlant] Error:', e)
+    return null
   }
+}
+
+export async function voteForPlant(plantId) {
+  // Contract signature: vote_for_plant(plant_id: String, validator: Address)
+  // El validator debe ser la cuenta conectada
+  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  if (!publicKey) throw new Error('No hay cuenta conectada para votar')
   
-  console.log('[voteForPlant] Votando por:', plantId, 'con cuenta:', publicKey)
+  console.log('[voteForPlant] Votando por planta:', plantId, 'con validador:', publicKey)
   
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'vote_for_plant', 
-    args: [plantId, publicKey]
+    args: [plantId, publicKey] 
   })
   
   return { success: true, plantId, transactionHash: resp?.hash || 'pending' }
@@ -339,51 +350,46 @@ export function getConnectedPublicKey() {
 }
 
 export async function listForSale(plantId, price) {
-  // Contract signature: list_for_sale(env, plant_id: String, seller: Address, price: i128)
-  const publicKey = getConnectedPublicKey()
-  if (!publicKey) {
-    throw new Error('No hay cuenta conectada para listar')
-  }
+  // Contract signature: list_for_sale(plant_id: String, seller: Address, price: i128)
+  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  if (!publicKey) throw new Error('No hay cuenta conectada para listar planta')
   
-  console.log('[listForSale] Listando:', plantId, 'precio:', price, 'vendedor:', publicKey)
+  const priceNum = parseInt(price, 10)
+  if (isNaN(priceNum) || priceNum <= 0) throw new Error('Precio inválido')
+  
+  console.log('[listForSale] Listando planta:', plantId, 'precio:', priceNum, 'vendedor:', publicKey)
   
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'list_for_sale', 
-    args: [plantId, publicKey, parseInt(price) || 0]
+    args: [plantId, publicKey, priceNum] 
   })
   
-  return { success: true, plantId, price, transactionHash: resp?.hash || 'pending' }
+  return { success: true, plantId, price: priceNum, transactionHash: resp?.hash || 'pending' }
 }
 
 export async function buyListing(plantId) {
-  // Contract signature: buy_listing(env, plant_id: String, buyer: Address) -> Result<bool, Error>
-  const publicKey = getConnectedPublicKey()
-  if (!publicKey) {
-    throw new Error('No hay cuenta conectada para comprar')
-  }
+  // Contract signature: buy_listing(plant_id: String, buyer: Address)
+  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  if (!publicKey) throw new Error('No hay cuenta conectada para comprar')
   
-  console.log('[buyListing] Comprando:', plantId, 'comprador:', publicKey)
+  console.log('[buyListing] Comprando planta:', plantId, 'comprador:', publicKey)
   
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'buy_listing', 
-    args: [plantId, publicKey]
+    args: [plantId, publicKey] 
   })
   
   return { success: true, plantId, transactionHash: resp?.hash || 'pending' }
 }
 
 export async function getListing(plantId) {
-  // Query contract for listing details using Soroban RPC
+  // Query contract for listing details
+  // Contract signature: get_listing implícito via DataKey::Listing
   try {
-    console.log('[getListing] Consultando listing para:', plantId)
-    
-    // Simulate contract call to get_listing (read-only)
-    // En producción esto debería llamar al RPC con simulateTransaction
-    const rpc = new SorobanRpc.Server(RPC_URL)
-    
-    // Por ahora retornamos estructura básica hasta implementar el método get_listing en el contrato
+    console.log('[getListing] Consultando listing:', plantId)
+    // Por ahora retorna estructura básica - TODO: implementar query real
     return { plantId, available: false, price: null, seller: null }
   } catch (e) {
     console.error('[getListing] Error:', e)
@@ -391,36 +397,12 @@ export async function getListing(plantId) {
   }
 }
 
-export async function getPlant(plantId) {
-  // Query contract for plant details using get_plant method
-  try {
-    console.log('[getPlant] Consultando planta:', plantId)
-    
-    const rpc = new SorobanRpc.Server(RPC_URL)
-    
-    // Por ahora retornamos estructura básica
-    // TODO: Implementar simulateTransaction con get_plant
-    return {
-      id: plantId,
-      name: 'Planta Ejemplo',
-      scientificName: 'Plantae Exemplaris',
-      properties: [],
-      validated: false,
-      validator: null
-    }
-  } catch (e) {
-    console.error('[getPlant] Error:', e)
-    return null
-  }
-}
-
 export async function getPlantVotes(plantId) {
   // Query contract for vote count
+  // El contrato almacena votos en DataKey::PlantVotes(plant_id)
   try {
-    console.log('[getPlantVotes] Consultando votos para:', plantId)
-    
-    // TODO: Implementar query al contrato
-    // Por ahora retorna 0
+    console.log('[getPlantVotes] Consultando votos:', plantId)
+    // Por ahora retorna 0 - TODO: implementar query real con RPC
     return 0
   } catch (e) {
     console.error('[getPlantVotes] Error:', e)
@@ -428,52 +410,22 @@ export async function getPlantVotes(plantId) {
   }
 }
 
-export async function getAllPlants() {
-  // Query contract for all registered plants
-  // NOTA: Soroban no tiene iteradores nativos, necesitarías un índice separado
-  // Por ahora retornamos array vacío
-  console.log('[getAllPlants] Consultando todas las plantas...')
-  
-  try {
-    // TODO: Implementar mecanismo de indexación
-    // Opción 1: Mantener lista de IDs en el contrato
-    // Opción 2: Indexar off-chain con event listener
-    // Opción 3: Usar Horizon para leer eventos del contrato
-    
-    return []
-  } catch (e) {
-    console.error('[getAllPlants] Error:', e)
-    return []
-  }
-}
-
-export async function addValidator(validatorAddress) {
-  // Add a validator to the contract
-  const resp = await submitOperation({ 
-    contractId: CONTRACT_ADDRESS, 
-    method: 'add_validator', 
-    args: [validatorAddress]
-  })
-  
-  return { success: true, validator: validatorAddress, transactionHash: resp?.hash || 'pending' }
-}
-
 export async function isValidator(address) {
-  // Check if address is a validator
+  // Query contract to check if address is validator
+  // Contract signature: is_validator(validator: Address) -> bool
   try {
-    console.log('[isValidator] Consultando si es validador:', address)
-    
-    // TODO: Implementar query al contrato
-    // Por ahora retorna false
-    return false
+    console.log('[isValidator] Verificando:', address)
+    const resp = await submitOperation({ 
+      contractId: CONTRACT_ADDRESS, 
+      method: 'is_validator', 
+      args: [address],
+      readOnly: true
+    })
+    return !!resp
   } catch (e) {
     console.error('[isValidator] Error:', e)
     return false
   }
-}
-  // Query contract for vote count
-  // Por ahora retorna 0
-  return 0
 }
 
 export default {
@@ -484,11 +436,13 @@ export default {
   submitOperation,
   registerPlant,
   getAllPlants,
+  getPlant,
   voteForPlant,
   listForSale,
   buyListing,
   getListing,
   getPlantVotes,
+  isValidator,
   isFreighterInstalled,
   waitForFreighterInjection,
   isRpcAvailable,
