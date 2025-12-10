@@ -133,6 +133,7 @@ function toScVal(value) {
     return value
   }
   
+  // Manejar strings (incluyendo addresses)
   if (typeof value === 'string') {
     // Check if it's an address (starts with G or C)
     if (value.startsWith('G') || value.startsWith('C')) {
@@ -140,20 +141,24 @@ function toScVal(value) {
         return new Address(value).toScVal()
       } catch (e) {
         // If not a valid address, treat as string
-        return xdr.ScVal.scvString(Buffer.from(value))
+        return nativeToScVal(value, { type: 'string' })
       }
     }
-    return xdr.ScVal.scvString(Buffer.from(value))
+    // String normal - usar nativeToScVal que NO requiere Buffer
+    return nativeToScVal(value, { type: 'string' })
   }
   
+  // Manejar números
   if (typeof value === 'number' || typeof value === 'bigint') {
     return nativeToScVal(value, { type: 'i128' })
   }
   
+  // Manejar booleanos
   if (typeof value === 'boolean') {
-    return xdr.ScVal.scvBool(value)
+    return nativeToScVal(value)
   }
   
+  // Manejar arrays
   if (Array.isArray(value)) {
     const scVals = value.map(v => toScVal(v))
     return xdr.ScVal.scvVec(scVals)
