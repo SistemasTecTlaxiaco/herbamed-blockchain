@@ -1,199 +1,312 @@
 <template>
   <div class="container mt-4">
-    <div class="card">
+    <h2>🛒 Marketplace de Plantas Medicinales</h2>
+    
+    <!-- Búsqueda de plantas/listings -->
+    <div class="card mb-4">
       <div class="card-body">
-        <h4 class="card-title">💰 Marketplace - Plantas en Venta</h4>
-        
-        <!-- Alert informativo sobre get_all_listings() -->
-        <div class="alert alert-warning mt-3" role="alert">
-          <h5>⚠️ Funcionalidad Pendiente</h5>
-          <p class="mb-0">
-            La función <code>get_all_listings()</code> necesita ser implementada en el contrato.
-            Puedes listar plantas y comprarlas, pero el listado automático de todas las plantas disponibles no está disponible todavía.
-            Puedes consultar listados individuales si conoces el ID de la planta.
-          </p>
+        <h5>Buscar Planta en Venta</h5>
+        <div class="input-group">
+          <input 
+            v-model="searchId" 
+            type="text" 
+            class="form-control" 
+            placeholder="ID de planta (ej: 001, ALBACA-001)"
+          />
+          <button 
+            class="btn btn-primary" 
+            @click="searchListing"
+            :disabled="searching || !searchId"
+          >
+            {{ searching ? '🔍 Buscando...' : '🔍 Buscar' }}
+          </button>
         </div>
-        
-        <!-- Alert banner para mostrar link de Stellar Expert -->
-        <div v-if="lastTransactionLink" class="alert alert-success alert-dismissible fade show mt-3" role="alert">
-          <h5 class="alert-heading">✅ Transacción {{ lastTransactionLink.action }} Exitosa</h5>
-          <p class="mb-1"><strong>ID de Planta:</strong> {{ lastTransactionLink.plantId }}</p>
-          <p class="mb-1"><strong>Hash de Transacción:</strong> <code>{{ lastTransactionLink.transactionHash }}</code></p>
-          <hr>
-          <p class="mb-0">
-            <a :href="lastTransactionLink.link" target="_blank" class="btn btn-sm btn-primary">
-              🔍 Verificar en Stellar Expert
-            </a>
-          </p>
-          <button type="button" class="btn-close" @click="lastTransactionLink = null" aria-label="Close"></button>
-        </div>
-
-        <!-- List plant for sale -->
-        <div class="card mb-3 bg-light">
-          <div class="card-body">
-            <h5>Listar tu planta para venta</h5>
-            <div class="row g-2">
-              <div class="col-md-4">
-                <input v-model="listForm.plantId" class="form-control" placeholder="ID de planta (ej: MNZ-001)" />
+        <small class="text-muted">
+          Ingresa el ID de una planta para ver si está en venta
+        </small>
+      </div>
+    </div>
+    
+    <div v-if="listings.length === 0" class="alert alert-info">
+      <h5>📭 No hay plantas en el marketplace</h5>
+      <p class="mb-0">Usa el buscador arriba para encontrar plantas en venta.</p>
+    </div>
+    
+    <div class="row mt-4">
+      <div class="col-md-6 mb-4" v-for="listing in listings" :key="listing.plant_id">
+        <div class="card h-100">
+          <div class="card-body d-flex flex-column">
+            <h5 class="card-title">🌿 {{ listing.plantInfo?.name || listing.plant_id }}</h5>
+            <h6 class="card-subtitle mb-2 text-muted">
+              {{ listing.plantInfo?.scientific_name || 'Planta medicinal' }}
+            </h6>
+            <div class="card-text flex-grow-1">
+              <p><small class="text-muted">ID: {{ listing.plant_id }}</small></p>
+              <p v-if="listing.plantInfo?.properties" class="mb-2">
+                <strong>Propiedades:</strong>
+                <ul>
+                  <li v-for="(prop, idx) in listing.plantInfo.properties.slice(0, 3)" :key="idx">
+                    {{ prop }}
+                  </li>
+                </ul>
+              </p>
+              <p><strong>Vendedor:</strong> {{ formatAddress(listing.seller) }}</p>
+            </div>
+            <div class="mt-auto">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge" :class="listing.available ? 'bg-success' : 'bg-secondary'">
+                  {{ listing.available ? '✅ Disponible' : '❌ Vendida' }}
+                </span>
+                <span class="fs-5 fw-bold text-primary">
+                  {{ listing.price }} XLM
+                </span>
               </div>
-              <div class="col-md-4">
-                <input v-model="listForm.price" type="number" class="form-control" placeholder="Precio (XLM)" />
-              </div>
-              <div class="col-md-4">
-                <button class="btn btn-success w-100" @click="listPlant" :disabled="loading">
-                  <span v-if="loading" class="spinner-border spinner-border-sm me-2"></span>
-                  Listar para venta
-                </button>
-              </div>
+              <button 
+                class="btn btn-primary w-100" 
+                @click="buyListing(listing.plant_id)"
+                :disabled="!listing.available || buying === listing.plant_id"
+              >
+                {{ buying === listing.plant_id ? '⏳ Comprando...' : listing.available ? '🛒 Comprar' : '❌ No disponible' }}
+              </button>
             </div>
           </div>
         </div>
-
-        <!-- Available listings -->
-        <h5>Plantas disponibles</h5>
-        <div v-if="listings.length === 0" class="alert alert-warning">
-          No hay plantas listadas aún. Usa el formulario arriba para listar una.
-        </div>
-        <div v-else class="row g-3">
-          <div v-for="listing in listings" :key="listing.plantId" class="col-md-6">
-            <div class="card" :class="{'border-success': listing.available, 'border-secondary': !listing.available}">
-              <div class="card-body">
-                <h6 class="card-title">🌿 {{ listing.plantId }}</h6>
-                <p class="mb-1"><strong>Precio:</strong> {{ listing.price }} XLM</p>
-                <p class="mb-1 small text-muted">Listado: {{ new Date(listing.listedAt).toLocaleString() }}</p>
-                <p class="mb-2">
-                  <span v-if="listing.available" class="badge bg-success">Disponible</span>
-                  <span v-else class="badge bg-secondary">Vendida</span>
-                </p>
-                <button 
-                  v-if="listing.available" 
-                  class="btn btn-primary btn-sm"
-                  @click="buyPlant(listing.plantId, listing.price)"
-                  :disabled="loading"
-                >
-                  Comprar
-                </button>
-                <button v-else class="btn btn-secondary btn-sm" disabled>Ya vendida</button>
-              </div>
-            </div>
+      </div>
+    </div>
+    
+    <!-- Crear nuevo listing -->
+    <div class="card mt-4">
+      <div class="card-body">
+        <h5>📦 Vender una Planta</h5>
+        <div class="row g-3">
+          <div class="col-md-8">
+            <input 
+              v-model="newListing.plantId" 
+              type="text" 
+              class="form-control" 
+              placeholder="ID de planta a vender"
+            />
+          </div>
+          <div class="col-md-4">
+            <input 
+              v-model.number="newListing.price" 
+              type="number" 
+              class="form-control" 
+              placeholder="Precio (XLM)"
+              min="0"
+              step="0.1"
+            />
           </div>
         </div>
-
-        <!-- Status message -->
-        <div v-if="status" class="mt-3 alert" :class="status.type === 'error' ? 'alert-danger' : 'alert-success'">
-          {{ status.message }}
-        </div>
+        <button 
+          class="btn btn-success w-100 mt-3" 
+          @click="createListing"
+          :disabled="listing || !newListing.plantId || !newListing.price"
+        >
+          {{ listing ? '⏳ Creando listing...' : '📦 Poner en venta' }}
+        </button>
+      </div>
+    </div>
+    
+    <!-- Status alerts con links a Stellar Expert -->
+    <div v-if="status" class="alert mt-4" :class="`alert-${status.type}`">
+      <div class="d-flex justify-content-between align-items-center">
+        <span>{{ status.message }}</span>
+        <a 
+          v-if="status.explorerUrl" 
+          :href="status.explorerUrl" 
+          target="_blank" 
+          class="btn btn-sm btn-outline-primary"
+        >
+          Ver en Stellar Expert →
+        </a>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { listForSale, buyListing, getListing } from '@/soroban/client'
+import { onMounted, ref } from 'vue'
+import soroban from '../../soroban/client'
+import { queryListing, queryPlant } from '../../soroban/queries'
+import { getTransactionUrl } from '../../soroban/stellar-expert'
 
 export default {
   name: 'MarketPlace',
   setup() {
-    const route = useRoute()
-    const listForm = ref({ plantId: '', price: '' })
     const listings = ref([])
-    const loading = ref(false)
+    const buying = ref(null)
+    const listing = ref(false)
+    const searching = ref(false)
+    const searchId = ref('')
+    const newListing = ref({ plantId: '', price: 0 })
     const status = ref(null)
-    const lastTransactionLink = ref(null)
-
-    async function loadListings() {
+    
+    const searchListing = async () => {
+      if (!searchId.value.trim()) return
+      
       try {
-        console.log('[MarketPlace] Cargando listados...')
-        // TODO: Cargar listados desde blockchain
-        // Necesita implementar get_all_listings() en el contrato
-        // Por ahora, puedes consultar listados individuales si conoces el plantId
-        listings.value = []
-        console.log('[MarketPlace] Listados cargados:', listings.value.length)
-      } catch (e) {
-        console.error('[MarketPlace] Error cargando listados:', e)
-        listings.value = []
-      }
-    }
-
-    async function listPlant() {
-      status.value = null
-      lastTransactionLink.value = null
-      if (!listForm.value.plantId || !listForm.value.price) {
-        status.value = { type: 'error', message: 'Completa ID y precio' }
-        return
-      }
-
-      loading.value = true
-      try {
-        console.log('[MarketPlace] Listando planta...')
-        const result = await listForSale(listForm.value.plantId, listForm.value.price)
+        searching.value = true
+        status.value = null
         
-        // Guardar link de Stellar Expert
-        if (result.stellarExpertLink) {
-          lastTransactionLink.value = {
-            action: 'LISTADO',
-            plantId: result.plantId,
-            transactionHash: result.transactionHash,
-            link: result.stellarExpertLink
+        console.log('[MarketPlace] Buscando listing:', searchId.value)
+        const listingData = await queryListing(searchId.value.trim())
+        
+        if (!listingData) {
+          status.value = {
+            type: 'warning',
+            message: `⚠️ No hay listing para la planta: ${searchId.value}`
           }
+          return
         }
         
-        status.value = { type: 'success', message: `✅ Planta listada en blockchain` }
-        listForm.value = { plantId: '', price: '' }
-        await loadListings()
-      } catch (e) {
-        status.value = { type: 'error', message: 'Error: ' + (e.message || e) }
-      } finally {
-        loading.value = false
-      }
-    }
-
-    async function buyPlant(plantId, price) {
-      status.value = null
-      lastTransactionLink.value = null
-      loading.value = true
-      try {
-        console.log('[MarketPlace] Comprando planta:', plantId)
-        const result = await buyListing(plantId, price)
-        
-        // Guardar link de Stellar Expert
-        if (result.stellarExpertLink) {
-          lastTransactionLink.value = {
-            action: 'COMPRA',
-            plantId: result.plantId,
-            transactionHash: result.transactionHash,
-            link: result.stellarExpertLink
+        // Verificar si ya existe
+        const exists = listings.value.find(l => l.plant_id === listingData.plant_id)
+        if (exists) {
+          status.value = {
+            type: 'info',
+            message: `ℹ️ El listing ${listingData.plant_id} ya está en la lista`
           }
+          return
         }
         
-        status.value = { type: 'success', message: `✅ Compra exitosa en blockchain` }
-        await loadListings()
-      } catch (e) {
-        status.value = { type: 'error', message: 'Error: ' + (e.message || e) }
+        // Intentar obtener info de la planta
+        try {
+          const plantInfo = await queryPlant(listingData.plant_id)
+          listingData.plantInfo = plantInfo
+        } catch (error) {
+          console.warn('[MarketPlace] No se pudo obtener info de planta:', error)
+        }
+        
+        // Agregar a lista
+        listings.value.push(listingData)
+        
+        status.value = {
+          type: 'success',
+          message: `✅ Listing encontrado: ${listingData.plant_id} - ${listingData.price} XLM`
+        }
+        
+        searchId.value = ''
+      } catch (error) {
+        console.error('[MarketPlace] Error al buscar listing:', error)
+        status.value = {
+          type: 'danger',
+          message: `❌ Error: ${error.message}`
+        }
       } finally {
-        loading.value = false
+        searching.value = false
       }
     }
-
+    
+    const createListing = async () => {
+      try {
+        listing.value = true
+        status.value = null
+        
+        console.log('[MarketPlace] Creando listing:', newListing.value)
+        const result = await soroban.listForSale(newListing.value.plantId, newListing.value.price)
+        
+        status.value = {
+          type: 'success',
+          message: `✅ Planta ${newListing.value.plantId} puesta en venta por ${newListing.value.price} XLM`,
+          explorerUrl: getTransactionUrl(result.transactionHash)
+        }
+        
+        // Agregar a la lista localmente
+        const listingData = {
+          plant_id: newListing.value.plantId,
+          price: newListing.value.price,
+          available: true,
+          seller: result.seller || 'Tu dirección'
+        }
+        
+        // Intentar obtener info de planta
+        try {
+          const plantInfo = await queryPlant(newListing.value.plantId)
+          listingData.plantInfo = plantInfo
+        } catch (error) {
+          console.warn('[MarketPlace] No se pudo obtener info de planta')
+        }
+        
+        listings.value.push(listingData)
+        
+        // Reset form
+        newListing.value = { plantId: '', price: 0 }
+      } catch (error) {
+        console.error('[MarketPlace] Error al crear listing:', error)
+        status.value = {
+          type: 'danger',
+          message: `❌ Error al crear listing: ${error.message}`
+        }
+      } finally {
+        listing.value = false
+      }
+    }
+    
+    const buyListing = async (plantId) => {
+      try {
+        buying.value = plantId
+        status.value = null
+        
+        console.log('[MarketPlace] Comprando:', plantId)
+        const result = await soroban.buyListing(plantId)
+        
+        status.value = {
+          type: 'success',
+          message: `✅ Planta ${plantId} comprada exitosamente`,
+          explorerUrl: getTransactionUrl(result.transactionHash)
+        }
+        
+        // Actualizar disponibilidad
+        const listingToUpdate = listings.value.find(l => l.plant_id === plantId)
+        if (listingToUpdate) {
+          listingToUpdate.available = false
+        }
+      } catch (error) {
+        console.error('[MarketPlace] Error al comprar:', error)
+        status.value = {
+          type: 'danger',
+          message: `❌ Error al comprar: ${error.message}`
+        }
+      } finally {
+        buying.value = null
+      }
+    }
+    
+    const formatAddress = (address) => {
+      if (!address || address.length < 10) return address
+      return `${address.slice(0, 6)}...${address.slice(-4)}`
+    }
+    
     onMounted(() => {
-      loadListings()
+      console.log('[MarketPlace] Componente montado')
+      console.log('[MarketPlace] Usa el buscador para encontrar listings')
     })
-
-    // Recargar cuando regresas a esta ruta
-    watch(() => route.path, async (newPath) => {
-      if (newPath === '/marketplace') {
-        console.log('[MarketPlace] Ruta /marketplace detectada - recargando datos')
-        await loadListings()
-      }
-    })
-
-    return { listForm, listings, loading, status, lastTransactionLink, listPlant, buyPlant }
+    
+    return {
+      listings,
+      buying,
+      listing,
+      searching,
+      searchId,
+      newListing,
+      status,
+      searchListing,
+      createListing,
+      buyListing,
+      formatAddress
+    }
   }
 }
 </script>
 
 <style scoped>
-.card { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.card {
+  transition: transform 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
 </style>
