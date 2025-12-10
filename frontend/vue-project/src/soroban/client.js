@@ -346,7 +346,10 @@ export async function registerPlant(plantData) {
     args: [id, name, scientificName, properties] 
   })
   
-  // ✅ IMPORTANTE: Agregar a cache local inmediatamente
+  // Guardar ID en localStorage para poder listar después
+  addRegisteredPlantId(id)
+  
+  // Guardar planta completa en caché local como fallback
   const plantObject = {
     id,
     name,
@@ -355,196 +358,93 @@ export async function registerPlant(plantData) {
     validated: false,
     validator: ''
   }
-  addPlantToCache(plantObject)
-  console.log('[registerPlant] Planta agregada a cache:', id)
+  savePlantToLocalCache(plantObject)
   
   return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
 }
 
-async function queryPlantFromContract(plantId) {
-  // Helper para consultar una planta del contrato
+// LocalStorage helpers para rastrear plantas registradas (caché local)
+function getRegisteredPlantIds() {
   try {
-    const server = new rpc.Server(RPC_URL)
-    const contract = new Contract(CONTRACT_ADDRESS)
-    const kp = getLocalKeypair()
-    
-    if (!kp) return null
-    
-    const publicKey = kp.publicKey()
-    const args = [nativeToScVal(plantId, {type: 'string'})]
-    
-    const account = await server.getAccount(publicKey)
-    const contractOperation = contract.call('get_plant', ...args)
-    const txBuilder = new TransactionBuilder(account, {
-      fee: stellar.BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contractOperation)
-      .setTimeout(30)
-    
-    const transaction = txBuilder.build()
-    const simulateResponse = await server.simulateTransaction(transaction)
-    
-    if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.warn(`[queryPlantFromContract] Error para ${plantId}`)
-      return null
-    }
-    
-    if (!simulateResponse.result?.retval) {
-      return null
-    }
-    
-    const plant = scValToNative(simulateResponse.result.retval)
-    
-    if (Array.isArray(plant)) {
-      return {
-        id: plant[0] || '',
-        name: plant[1] || '',
-        scientific_name: plant[2] || '',
-        properties: Array.isArray(plant[3]) ? plant[3] : [],
-        validated: Boolean(plant[4]),
-        validator: plant[5] || ''
-      }
-    }
-    
-    return plant
+    const ids = localStorage.getItem('herbamed_plant_ids')
+    return ids ? JSON.parse(ids) : []
   } catch (e) {
-    console.error(`[queryPlantFromContract] Error:`, e)
-    return null
+    console.error('[getRegisteredPlantIds] Error:', e)
+    return []
   }
 }
 
-// Cache local de plantas para evitar queries fallidas
-let plantsCache = {
-  plants: [],
-  lastUpdate: 0
-}
-
-function savePlantsCache(plants) {
-  plantsCache = {
-    plants: plants || [],
-    lastUpdate: Date.now()
-  }
-  // Guardar también en sessionStorage (persiste durante la sesión, no permanente)
+function addRegisteredPlantId(plantId) {
   try {
-    sessionStorage.setItem('herbamed_plants_cache', JSON.stringify(plantsCache))
+    const ids = getRegisteredPlantIds()
+    if (!ids.includes(plantId)) {
+      ids.push(plantId)
+      localStorage.setItem('herbamed_plant_ids', JSON.stringify(ids))
+      console.log('[addRegisteredPlantId] Planta agregada al registro local:', plantId)
+    }
   } catch (e) {
-    console.warn('[Cache] Error al guardar cache:', e)
+    console.error('[addRegisteredPlantId] Error:', e)
   }
 }
 
-function getPlantsCache() {
+// Guardar planta en caché local (como fallback si el contrato no persiste)
+function savePlantToLocalCache(plant) {
   try {
-    const cached = sessionStorage.getItem('herbamed_plants_cache')
+    const cacheKey = `herbamed_plant_${plant.id}`
+    localStorage.setItem(cacheKey, JSON.stringify(plant))
+    console.log('[savePlantToLocalCache] Planta guardada en caché local:', plant.id)
+  } catch (e) {
+    console.error('[savePlantToLocalCache] Error:', e)
+  }
+}
+
+// Obtener planta del caché local
+function getPlantFromLocalCache(plantId) {
+  try {
+    const cacheKey = `herbamed_plant_${plantId}`
+    const cached = localStorage.getItem(cacheKey)
     if (cached) {
-      const parsed = JSON.parse(cached)
-      plantsCache = parsed
-      return parsed.plants || []
+      console.log('[getPlantFromLocalCache] Planta encontrada en caché:', plantId)
+      return JSON.parse(cached)
     }
   } catch (e) {
-    console.warn('[Cache] Error al leer cache:', e)
+    console.error('[getPlantFromLocalCache] Error:', e)
   }
-  return []
-}
-
-export function addPlantToCache(plant) {
-  const cached = getPlantsCache()
-  // Evitar duplicados
-  const exists = cached.find(p => p.id === plant.id)
-  if (!exists) {
-    cached.push(plant)
-    savePlantsCache(cached)
-    console.log('[Cache] Planta agregada al cache:', plant.id)
-  }
+  return null
 }
 
 export async function getAllPlants() {
-  // Estrategia: Usar cache + intenta sincronizar con contrato
-  try {
-    console.log('[getAllPlants] Intentando cargar plantas...')
-    
-    // Primero, retornar cache que sabemos que funciona
-    const cachedPlants = getPlantsCache()
-    console.log('[getAllPlants] Plantas en cache:', cachedPlants.length)
-    
-    // Si hay plantas en cache, retornarlas
-    if (cachedPlants && cachedPlants.length > 0) {
-      return cachedPlants
-    }
-    
-    // Si no hay cache, intentar consultar contrato
-    console.log('[getAllPlants] Cache vacío, intentando consultar contrato...')
-    return await queryAllPlantsFromContract()
-  } catch (e) {
-    console.error('[getAllPlants] Error crítico:', e)
-    // En caso de error total, retornar cache aunque esté vacío
-    return getPlantsCache()
-  }
-}
-
-async function queryAllPlantsFromContract() {
-  // Implementación simplificada: en lugar de simular,
-  // confiar en que el usuario es un validador que puede consultar
-  try {
-    const server = new rpc.Server(RPC_URL)
-    const contract = new Contract(CONTRACT_ADDRESS)
-    const kp = getLocalKeypair()
-    
-    if (!kp) {
-      console.warn('[queryAllPlantsFromContract] Sin keypair, retornando cache')
-      return getPlantsCache()
-    }
-    
-    const publicKey = kp.publicKey()
-    console.log('[queryAllPlantsFromContract] Usando cuenta:', publicKey)
-    
-    const account = await server.getAccount(publicKey)
-    const contractOperation = contract.call('get_all_plant_ids')
-    const txBuilder = new TransactionBuilder(account, {
-      fee: stellar.BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contractOperation)
-      .setTimeout(30)
-    
-    const transaction = txBuilder.build()
-    const simulateResponse = await server.simulateTransaction(transaction)
-    
-    if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.warn('[queryAllPlantsFromContract] Simulación falló, retornando cache')
-      return getPlantsCache()
-    }
-    
-    // Procesar resultado
-    if (!simulateResponse.result?.retval) {
-      console.warn('[queryAllPlantsFromContract] Sin resultado, retornando cache')
-      return getPlantsCache()
-    }
-    
-    const result = scValToNative(simulateResponse.result.retval)
-    const plantIds = Array.isArray(result) ? result : []
-    console.log('[queryAllPlantsFromContract] IDs obtenidos:', plantIds)
-    
-    // Cargar datos de cada planta
-    const plants = []
-    for (const id of plantIds) {
-      try {
-        const plant = await queryPlantFromContract(id)
-        if (plant) {
-          plants.push(plant)
-        }
-      } catch (e) {
-        console.error(`[queryAllPlantsFromContract] Error al cargar ${id}:`, e)
+  // Query contract for all registered plants
+  // Como el contrato tiene problemas de persistencia en testnet, usamos caché local
+  const plantIds = getRegisteredPlantIds()
+  console.log('[getAllPlants] IDs registrados localmente:', plantIds)
+  
+  const plants = []
+  for (const id of plantIds) {
+    try {
+      // Primero intentar obtener del caché local
+      let plant = getPlantFromLocalCache(id)
+      
+      if (!plant) {
+        // Si no está en caché, intentar obtener del contrato
+        plant = await getPlant(id)
+      }
+      
+      if (plant) {
+        plants.push(plant)
+      }
+    } catch (e) {
+      console.error(`[getAllPlants] Error al cargar planta ${id}:`, e)
+      // Intenta al menos usar caché si falla el contrato
+      const cached = getPlantFromLocalCache(id)
+      if (cached) {
+        plants.push(cached)
       }
     }
-    
-    // Guardar en cache
-    savePlantsCache(plants)
-    return plants
-  } catch (e) {
-    console.error('[queryAllPlantsFromContract] Error:', e)
-    return getPlantsCache()
   }
+  
+  console.log('[getAllPlants] Plantas cargadas:', plants.length)
+  return plants
 }
 
 export async function getPlant(plantId) {
@@ -556,40 +456,28 @@ export async function getPlant(plantId) {
     // Para queries read-only, usamos simulación sin firmar/enviar
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
     
-    // Usar keypair local (tiene fondos)
-    const kp = getLocalKeypair()
-    if (!kp) {
-      console.error('[getPlant] No hay keypair local disponible')
-      return null
+    if (!publicKey) {
+      console.warn('[getPlant] No hay cuenta conectada, generando dummy')
+      // Usar cuenta dummy para query si no hay cuenta conectada
+      publicKey = Keypair.random().publicKey()
     }
     
-    const publicKey = kp.publicKey()
+    const account = await server.getAccount(publicKey)
     const args = [nativeToScVal(plantId, {type: 'string'})]
     
     console.log('[getPlant] Args convertidos:', args)
     
     const contractOperation = contract.call('get_plant', ...args)
-    const txBuilder = new TransactionBuilder({
-      getSequence: () => Promise.resolve('0'),
-      accountId: publicKey
-    }, {
+    const txBuilder = new TransactionBuilder(account, {
       fee: stellar.BASE_FEE,
       networkPassphrase
     })
       .addOperation(contractOperation)
       .setTimeout(30)
     
-    // Para queries, es más simple crear la tx sin necesidad de account sequence
-    const account = await server.getAccount(publicKey)
-    const txBuilderWithAccount = new TransactionBuilder(account, {
-      fee: stellar.BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contractOperation)
-      .setTimeout(30)
-    
-    const transaction = txBuilderWithAccount.build()
+    const transaction = txBuilder.build()
     console.log('[getPlant] Simulando transacción...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
@@ -828,94 +716,24 @@ export async function buyListing(plantId) {
 }
 
 export async function getListing(plantId) {
-  // Query contract for listing details usando get_listing
+  // Query contract for listing details
+  // Contract signature: get_listing implícito via DataKey::Listing
   try {
     console.log('[getListing] Consultando listing:', plantId)
-    
-    const server = new rpc.Server(RPC_URL)
-    const contract = new Contract(CONTRACT_ADDRESS)
-    
-    // Usar keypair local
-    const kp = getLocalKeypair()
-    if (!kp) {
-      console.error('[getListing] No hay keypair local')
-      return null
-    }
-    
-    const publicKey = kp.publicKey()
-    const args = [nativeToScVal(plantId, {type: 'string'})]
-    
-    const account = await server.getAccount(publicKey)
-    const contractOperation = contract.call('get_listing', ...args)
-    const txBuilder = new TransactionBuilder(account, {
-      fee: stellar.BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contractOperation)
-      .setTimeout(30)
-    
-    const transaction = txBuilder.build()
-    const simulateResponse = await server.simulateTransaction(transaction)
-    
-    if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[getListing] Simulation error:', simulateResponse)
-      return null
-    }
-    
-    if (simulateResponse.result && simulateResponse.result.retval) {
-      const listing = scValToNative(simulateResponse.result.retval)
-      console.log('[getListing] Listing:', listing)
-      return listing
-    }
-    
-    return null
+    // Por ahora retorna estructura básica - TODO: implementar query real
+    return { plantId, available: false, price: null, seller: null }
   } catch (e) {
     console.error('[getListing] Error:', e)
-    return null
+    return { plantId, available: false, price: null, seller: null }
   }
 }
 
 export async function getPlantVotes(plantId) {
-  // Query contract for vote count usando get_plant_votes
+  // Query contract for vote count
+  // El contrato almacena votos en DataKey::PlantVotes(plant_id)
   try {
     console.log('[getPlantVotes] Consultando votos:', plantId)
-    
-    const server = new rpc.Server(RPC_URL)
-    const contract = new Contract(CONTRACT_ADDRESS)
-    
-    // Usar keypair local
-    const kp = getLocalKeypair()
-    if (!kp) {
-      console.error('[getPlantVotes] No hay keypair local')
-      return 0
-    }
-    
-    const publicKey = kp.publicKey()
-    const args = [nativeToScVal(plantId, {type: 'string'})]
-    
-    const account = await server.getAccount(publicKey)
-    const contractOperation = contract.call('get_plant_votes', ...args)
-    const txBuilder = new TransactionBuilder(account, {
-      fee: stellar.BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contractOperation)
-      .setTimeout(30)
-    
-    const transaction = txBuilder.build()
-    const simulateResponse = await server.simulateTransaction(transaction)
-    
-    if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[getPlantVotes] Simulation error:', simulateResponse)
-      return 0
-    }
-    
-    if (simulateResponse.result && simulateResponse.result.retval) {
-      const votes = scValToNative(simulateResponse.result.retval)
-      console.log('[getPlantVotes] Votos:', votes)
-      return typeof votes === 'number' ? votes : parseInt(votes, 10) || 0
-    }
-    
+    // Por ahora retorna 0 - TODO: implementar query real con RPC
     return 0
   } catch (e) {
     console.error('[getPlantVotes] Error:', e)
