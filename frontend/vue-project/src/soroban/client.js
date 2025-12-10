@@ -359,11 +359,16 @@ export async function getAllPlants() {
     // Crear query para get_all_plant_ids (read-only)
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
     
-    if (!publicKey) {
-      publicKey = Keypair.random().publicKey()
+    // Usar la cuenta del keypair local (tiene fondos en testnet)
+    const kp = getLocalKeypair()
+    if (!kp) {
+      console.error('[getAllPlants] No hay keypair local disponible')
+      return []
     }
+    
+    const publicKey = kp.publicKey()
+    console.log('[getAllPlants] Usando cuenta:', publicKey)
     
     const account = await server.getAccount(publicKey)
     const contractOperation = contract.call('get_all_plant_ids')
@@ -375,6 +380,7 @@ export async function getAllPlants() {
       .setTimeout(30)
     
     const transaction = txBuilder.build()
+    console.log('[getAllPlants] Simulando consulta...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
@@ -419,28 +425,40 @@ export async function getPlant(plantId) {
     // Para queries read-only, usamos simulación sin firmar/enviar
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
     
-    if (!publicKey) {
-      console.warn('[getPlant] No hay cuenta conectada, generando dummy')
-      // Usar cuenta dummy para query si no hay cuenta conectada
-      publicKey = Keypair.random().publicKey()
+    // Usar keypair local (tiene fondos)
+    const kp = getLocalKeypair()
+    if (!kp) {
+      console.error('[getPlant] No hay keypair local disponible')
+      return null
     }
     
-    const account = await server.getAccount(publicKey)
+    const publicKey = kp.publicKey()
     const args = [nativeToScVal(plantId, {type: 'string'})]
     
     console.log('[getPlant] Args convertidos:', args)
     
     const contractOperation = contract.call('get_plant', ...args)
-    const txBuilder = new TransactionBuilder(account, {
+    const txBuilder = new TransactionBuilder({
+      getSequence: () => Promise.resolve('0'),
+      accountId: publicKey
+    }, {
       fee: stellar.BASE_FEE,
       networkPassphrase
     })
       .addOperation(contractOperation)
       .setTimeout(30)
     
-    const transaction = txBuilder.build()
+    // Para queries, es más simple crear la tx sin necesidad de account sequence
+    const account = await server.getAccount(publicKey)
+    const txBuilderWithAccount = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilderWithAccount.build()
     console.log('[getPlant] Simulando transacción...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
@@ -685,15 +703,18 @@ export async function getListing(plantId) {
     
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
     
-    if (!publicKey) {
-      publicKey = Keypair.random().publicKey()
+    // Usar keypair local
+    const kp = getLocalKeypair()
+    if (!kp) {
+      console.error('[getListing] No hay keypair local')
+      return null
     }
     
-    const account = await server.getAccount(publicKey)
+    const publicKey = kp.publicKey()
     const args = [nativeToScVal(plantId, {type: 'string'})]
     
+    const account = await server.getAccount(publicKey)
     const contractOperation = contract.call('get_listing', ...args)
     const txBuilder = new TransactionBuilder(account, {
       fee: stellar.BASE_FEE,
@@ -730,15 +751,18 @@ export async function getPlantVotes(plantId) {
     
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
     
-    if (!publicKey) {
-      publicKey = Keypair.random().publicKey()
+    // Usar keypair local
+    const kp = getLocalKeypair()
+    if (!kp) {
+      console.error('[getPlantVotes] No hay keypair local')
+      return 0
     }
     
-    const account = await server.getAccount(publicKey)
+    const publicKey = kp.publicKey()
     const args = [nativeToScVal(plantId, {type: 'string'})]
     
+    const account = await server.getAccount(publicKey)
     const contractOperation = contract.call('get_plant_votes', ...args)
     const txBuilder = new TransactionBuilder(account, {
       fee: stellar.BASE_FEE,
