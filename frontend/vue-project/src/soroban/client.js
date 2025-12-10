@@ -8,7 +8,7 @@ const Networks = stellar.Networks
 const Transaction = stellar.Transaction
 const Contract = stellar.Contract
 const Address = stellar.Address
-const SorobanRpc = stellar.SorobanRpc
+const rpc = stellar.rpc  // ✅ CORRECTO: es 'rpc' minúscula, no 'SorobanRpc'
 const nativeToScVal = stellar.nativeToScVal
 const xdr = stellar.xdr
 
@@ -170,12 +170,12 @@ async function buildTransactionLocally(operation, sourcePublicKey) {
     
     const contractAddress = operation.contractId || CONTRACT_ADDRESS
     
-    // Verificar que SorobanRpc existe
-    if (!SorobanRpc || !SorobanRpc.Server) {
-      throw new Error('SorobanRpc.Server no está disponible en el SDK')
+    // Verificar que rpc existe
+    if (!rpc || !rpc.Server) {
+      throw new Error('rpc.Server no está disponible en el SDK')
     }
     
-    const server = new SorobanRpc.Server(RPC_URL)
+    const server = new rpc.Server(RPC_URL)
     console.log('[buildTransactionLocally] Servidor RPC creado:', RPC_URL)
     
     // Get source account
@@ -216,13 +216,13 @@ async function buildTransactionLocally(operation, sourcePublicKey) {
     console.log('[buildTransactionLocally] Simulando transacción...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
-    if (SorobanRpc.Api.isSimulationError(simulateResponse)) {
+    if (rpc.Api.isSimulationError(simulateResponse)) {
       console.error('[buildTransactionLocally] Simulation error:', simulateResponse)
       throw new Error(`Simulation failed: ${simulateResponse.error}`)
     }
     
     // Prepare the transaction with simulation results
-    transaction = SorobanRpc.assembleTransaction(transaction, simulateResponse).build()
+    transaction = rpc.assembleTransaction(transaction, simulateResponse).build()
     
     console.log('[buildTransactionLocally] Transacción construida exitosamente')
     return transaction.toXDR()
