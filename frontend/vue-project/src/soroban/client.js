@@ -117,54 +117,147 @@ export async function submitTx(txXdr) {
   }
 }
 
+// Helper to convert JS values to Soroban scVal types
+function toScVal(value) {
+  if (typeof value === 'string') {
+    return stellar.xdr.ScVal.scvString(value)
+  }
+  if (typeof value === 'number') {
+    return stellar.nativeToScVal(value, { type: 'i128' })
+  }
+  if (typeof value === 'boolean') {
+    return stellar.xdr.ScVal.scvBool(value)
+  }
+  if (Array.isArray(value)) {
+    const scVals = value.map(v => toScVal(v))
+    return stellar.xdr.ScVal.scvVec(scVals)
+  }
+  // If it's an address string (G... or C...)
+  if (typeof value === 'string' && (value.startsWith('G') || value.startsWith('C'))) {
+    const addr = new stellar.Address(value)
+    return addr.toScVal()
+  }
+  throw new Error(`Unsupported type for value: ${typeof value}`)
+}
+
+// Build transaction locally using Stellar SDK
+async function buildTransactionLocally(operation, sourcePublicKey) {
+  try {
+    console.log('[buildTransactionLocally] Construyendo transacción para:', operation.method)
+    
+    const contractAddress = operation.contractId || CONTRACT_ADDRESS
+    const server = new SorobanRpc.Server(RPC_URL)
+    
+    // Get source account
+    const sourceAccount = await server.getAccount(sourcePublicKey)
+    
+    // Convert args to ScVal
+    const scArgs = (operation.args || []).map(arg => toScVal(arg))
+    
+    // Create contract address
+    const contract = new stellar.Contract(contractAddress)
+    
+    // Build the operation
+    let contractOperation
+    if (operation.method) {
+      contractOperation = contract.call(operation.method, ...scArgs)
+    } else {
+      throw new Error('Method name is required')
+    }
+    
+    // Build transaction
+    const txBuilder = new TransactionBuilder(sourceAccount, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    let transaction = txBuilder.build()
+    
+    // Simulate to get the correct resource fees
+    console.log('[buildTransactionLocally] Simulando transacción...')
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (SorobanRpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[buildTransactionLocally] Simulation error:', simulateResponse)
+      throw new Error(`Simulation failed: ${simulateResponse.error}`)
+    }
+    
+    // Prepare the transaction with simulation results
+    transaction = SorobanRpc.assembleTransaction(transaction, simulateResponse).build()
+    
+    console.log('[buildTransactionLocally] Transacción construida exitosamente')
+    return transaction.toXDR()
+    
+  } catch (error) {
+    console.error('[buildTransactionLocally] Error:', error)
+    throw error
+  }
+}
+
 // High-level helper: submit an operation (object with method/args/contractId)
 export async function submitOperation(operation = {}) {
   // Determine signer
   const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
   if (!publicKey) throw new Error('No public key available to build transaction')
 
-  // Build unsigned XDR (prefer builder service)
+  console.log('[submitOperation] Operación:', operation.method, 'Args:', operation.args)
+
+  // Build unsigned XDR - try local build first, then builder service
   let unsignedXDR = null
-  if (TX_BUILDER_URL) {
-    unsignedXDR = await buildUnsignedXDR(operation, publicKey)
+  
+  try {
+    // PRIMARY: Build locally using Stellar SDK
+    console.log('[submitOperation] Construyendo transacción localmente...')
+    unsignedXDR = await buildTransactionLocally(operation, publicKey)
+  } catch (localError) {
+    console.warn('[submitOperation] Error en construcción local:', localError.message)
+    
+    // FALLBACK: Try builder service if configured
+    if (TX_BUILDER_URL) {
+      console.log('[submitOperation] Intentando builder service...')
+      unsignedXDR = await buildUnsignedXDR(operation, publicKey)
+    }
   }
 
   if (!unsignedXDR) {
-    // As a last resort, try to use SorobanRpc transaction building if available
-    try {
-      if (typeof SorobanRpc !== 'undefined') {
-        const rpc = new SorobanRpc(RPC_URL)
-        const account = await rpc.getAccount(publicKey)
-        const txb = new TransactionBuilder(account, { fee: '10000', networkPassphrase }).setTimeout(30)
-        // can't reliably construct host function here without proper SDK helpers; fall back to builder service
-      }
-    } catch (e) {
-      // ignore
-    }
-    if (!unsignedXDR) throw new Error('Unable to build unsigned transaction: no builder available')
+    throw new Error('Unable to build unsigned transaction: local build and builder service failed')
   }
+
+  console.log('[submitOperation] XDR sin firmar obtenido, procediendo a firmar...')
 
   // Sign the unsigned XDR: prefer Freighter
   let signedXDR = null
-  if (typeof window !== 'undefined' && window.freighterApi) {
+  const api = getFreighterAPI()
+  
+  if (api && typeof api.signTransaction === 'function') {
     try {
-      const signed = await window.freighterApi.signTransaction(unsignedXDR, networkPassphrase)
+      console.log('[submitOperation] Firmando con Freighter...')
+      const signed = await api.signTransaction(unsignedXDR, networkPassphrase)
       signedXDR = typeof signed === 'string' ? signed : (signed && signed.signed_envelope_xdr) ? signed.signed_envelope_xdr : null
+      console.log('[submitOperation] ✅ Firmado con Freighter')
     } catch (e) {
+      console.warn('[submitOperation] Error firmando con Freighter:', e.message)
       // fall through to local keypair
     }
   }
 
   if (!signedXDR) {
+    console.log('[submitOperation] Firmando con keypair local...')
     const kp = getLocalKeypair()
     if (!kp) throw new Error('No signer available (Freighter or local key)')
-    const txObj = Transaction.fromXDR(unsignedXDR, networkPassphrase)
+    const txObj = stellar.Transaction.fromXDR(unsignedXDR, networkPassphrase)
     txObj.sign(kp)
     signedXDR = txObj.toXDR()
+    console.log('[submitOperation] ✅ Firmado con keypair local')
   }
 
   // Submit signed XDR
-  return await submitTx(signedXDR)
+  console.log('[submitOperation] Enviando transacción a RPC...')
+  const result = await submitTx(signedXDR)
+  console.log('[submitOperation] ✅ Transacción enviada:', result)
+  return result
 }
 
 export async function registerPlant(plantData) {
