@@ -347,55 +347,67 @@ export async function registerPlant(plantData) {
   })
   
   // Guardar ID en localStorage para poder listar después
-  addRegisteredPlantId(id)
-  
+  // Ya no necesitamos localStorage - el contrato ahora mantiene los IDs
   return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
 }
 
-// LocalStorage helpers para rastrear plantas registradas
-function getRegisteredPlantIds() {
+export async function getAllPlants() {
+  // Query contract for all registered plant IDs usando get_all_plant_ids
   try {
-    const ids = localStorage.getItem('herbamed_plant_ids')
-    return ids ? JSON.parse(ids) : []
+    console.log('[getAllPlants] Consultando IDs desde contrato...')
+    
+    // Crear query para get_all_plant_ids (read-only)
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const contractOperation = contract.call('get_all_plant_ids')
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getAllPlants] Simulation error:', simulateResponse)
+      return []
+    }
+    
+    let plantIds = []
+    if (simulateResponse.result && simulateResponse.result.retval) {
+      const result = scValToNative(simulateResponse.result.retval)
+      plantIds = Array.isArray(result) ? result : []
+      console.log('[getAllPlants] IDs desde contrato:', plantIds)
+    }
+    
+    // Obtener datos de cada planta
+    const plants = []
+    for (const id of plantIds) {
+      try {
+        const plant = await getPlant(id)
+        if (plant) {
+          plants.push(plant)
+        }
+      } catch (e) {
+        console.error(`[getAllPlants] Error al cargar planta ${id}:`, e)
+      }
+    }
+    
+    console.log('[getAllPlants] Plantas cargadas:', plants.length)
+    return plants
   } catch (e) {
-    console.error('[getRegisteredPlantIds] Error:', e)
+    console.error('[getAllPlants] Error:', e)
     return []
   }
-}
-
-function addRegisteredPlantId(plantId) {
-  try {
-    const ids = getRegisteredPlantIds()
-    if (!ids.includes(plantId)) {
-      ids.push(plantId)
-      localStorage.setItem('herbamed_plant_ids', JSON.stringify(ids))
-      console.log('[addRegisteredPlantId] Planta agregada al registro local:', plantId)
-    }
-  } catch (e) {
-    console.error('[addRegisteredPlantId] Error:', e)
-  }
-}
-
-export async function getAllPlants() {
-  // Query contract for all registered plants
-  // Como el contrato no tiene get_all_plants, consultamos cada ID registrado
-  const plantIds = getRegisteredPlantIds()
-  console.log('[getAllPlants] IDs registrados localmente:', plantIds)
-  
-  const plants = []
-  for (const id of plantIds) {
-    try {
-      const plant = await getPlant(id)
-      if (plant) {
-        plants.push(plant)
-      }
-    } catch (e) {
-      console.error(`[getAllPlants] Error al cargar planta ${id}:`, e)
-    }
-  }
-  
-  console.log('[getAllPlants] Plantas cargadas:', plants.length)
-  return plants
 }
 
 export async function getPlant(plantId) {
@@ -667,24 +679,88 @@ export async function buyListing(plantId) {
 }
 
 export async function getListing(plantId) {
-  // Query contract for listing details
-  // Contract signature: get_listing implícito via DataKey::Listing
+  // Query contract for listing details usando get_listing
   try {
     console.log('[getListing] Consultando listing:', plantId)
-    // Por ahora retorna estructura básica - TODO: implementar query real
-    return { plantId, available: false, price: null, seller: null }
+    
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const args = [nativeToScVal(plantId, {type: 'string'})]
+    
+    const contractOperation = contract.call('get_listing', ...args)
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getListing] Simulation error:', simulateResponse)
+      return null
+    }
+    
+    if (simulateResponse.result && simulateResponse.result.retval) {
+      const listing = scValToNative(simulateResponse.result.retval)
+      console.log('[getListing] Listing:', listing)
+      return listing
+    }
+    
+    return null
   } catch (e) {
     console.error('[getListing] Error:', e)
-    return { plantId, available: false, price: null, seller: null }
+    return null
   }
 }
 
 export async function getPlantVotes(plantId) {
-  // Query contract for vote count
-  // El contrato almacena votos en DataKey::PlantVotes(plant_id)
+  // Query contract for vote count usando get_plant_votes
   try {
     console.log('[getPlantVotes] Consultando votos:', plantId)
-    // Por ahora retorna 0 - TODO: implementar query real con RPC
+    
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const args = [nativeToScVal(plantId, {type: 'string'})]
+    
+    const contractOperation = contract.call('get_plant_votes', ...args)
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getPlantVotes] Simulation error:', simulateResponse)
+      return 0
+    }
+    
+    if (simulateResponse.result && simulateResponse.result.retval) {
+      const votes = scValToNative(simulateResponse.result.retval)
+      console.log('[getPlantVotes] Votos:', votes)
+      return typeof votes === 'number' ? votes : parseInt(votes, 10) || 0
+    }
+    
     return 0
   } catch (e) {
     console.error('[getPlantVotes] Error:', e)
