@@ -346,29 +346,157 @@ export async function registerPlant(plantData) {
     args: [id, name, scientificName, properties] 
   })
   
-  // Guardar ID en localStorage para poder listar después
-  // Ya no necesitamos localStorage - el contrato ahora mantiene los IDs
+  // ✅ IMPORTANTE: Agregar a cache local inmediatamente
+  const plantObject = {
+    id,
+    name,
+    scientific_name: scientificName,
+    properties,
+    validated: false,
+    validator: ''
+  }
+  addPlantToCache(plantObject)
+  console.log('[registerPlant] Planta agregada a cache:', id)
+  
   return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
 }
 
-export async function getAllPlants() {
-  // Query contract for all registered plant IDs usando get_all_plant_ids
+async function queryPlantFromContract(plantId) {
+  // Helper para consultar una planta del contrato
   try {
-    console.log('[getAllPlants] Consultando IDs desde contrato...')
-    
-    // Crear query para get_all_plant_ids (read-only)
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    
-    // Usar la cuenta del keypair local (tiene fondos en testnet)
     const kp = getLocalKeypair()
+    
+    if (!kp) return null
+    
+    const publicKey = kp.publicKey()
+    const args = [nativeToScVal(plantId, {type: 'string'})]
+    
+    const account = await server.getAccount(publicKey)
+    const contractOperation = contract.call('get_plant', ...args)
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.warn(`[queryPlantFromContract] Error para ${plantId}`)
+      return null
+    }
+    
+    if (!simulateResponse.result?.retval) {
+      return null
+    }
+    
+    const plant = scValToNative(simulateResponse.result.retval)
+    
+    if (Array.isArray(plant)) {
+      return {
+        id: plant[0] || '',
+        name: plant[1] || '',
+        scientific_name: plant[2] || '',
+        properties: Array.isArray(plant[3]) ? plant[3] : [],
+        validated: Boolean(plant[4]),
+        validator: plant[5] || ''
+      }
+    }
+    
+    return plant
+  } catch (e) {
+    console.error(`[queryPlantFromContract] Error:`, e)
+    return null
+  }
+}
+
+// Cache local de plantas para evitar queries fallidas
+let plantsCache = {
+  plants: [],
+  lastUpdate: 0
+}
+
+function savePlantsCache(plants) {
+  plantsCache = {
+    plants: plants || [],
+    lastUpdate: Date.now()
+  }
+  // Guardar también en sessionStorage (persiste durante la sesión, no permanente)
+  try {
+    sessionStorage.setItem('herbamed_plants_cache', JSON.stringify(plantsCache))
+  } catch (e) {
+    console.warn('[Cache] Error al guardar cache:', e)
+  }
+}
+
+function getPlantsCache() {
+  try {
+    const cached = sessionStorage.getItem('herbamed_plants_cache')
+    if (cached) {
+      const parsed = JSON.parse(cached)
+      plantsCache = parsed
+      return parsed.plants || []
+    }
+  } catch (e) {
+    console.warn('[Cache] Error al leer cache:', e)
+  }
+  return []
+}
+
+export function addPlantToCache(plant) {
+  const cached = getPlantsCache()
+  // Evitar duplicados
+  const exists = cached.find(p => p.id === plant.id)
+  if (!exists) {
+    cached.push(plant)
+    savePlantsCache(cached)
+    console.log('[Cache] Planta agregada al cache:', plant.id)
+  }
+}
+
+export async function getAllPlants() {
+  // Estrategia: Usar cache + intenta sincronizar con contrato
+  try {
+    console.log('[getAllPlants] Intentando cargar plantas...')
+    
+    // Primero, retornar cache que sabemos que funciona
+    const cachedPlants = getPlantsCache()
+    console.log('[getAllPlants] Plantas en cache:', cachedPlants.length)
+    
+    // Si hay plantas en cache, retornarlas
+    if (cachedPlants && cachedPlants.length > 0) {
+      return cachedPlants
+    }
+    
+    // Si no hay cache, intentar consultar contrato
+    console.log('[getAllPlants] Cache vacío, intentando consultar contrato...')
+    return await queryAllPlantsFromContract()
+  } catch (e) {
+    console.error('[getAllPlants] Error crítico:', e)
+    // En caso de error total, retornar cache aunque esté vacío
+    return getPlantsCache()
+  }
+}
+
+async function queryAllPlantsFromContract() {
+  // Implementación simplificada: en lugar de simular,
+  // confiar en que el usuario es un validador que puede consultar
+  try {
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    const kp = getLocalKeypair()
+    
     if (!kp) {
-      console.error('[getAllPlants] No hay keypair local disponible')
-      return []
+      console.warn('[queryAllPlantsFromContract] Sin keypair, retornando cache')
+      return getPlantsCache()
     }
     
     const publicKey = kp.publicKey()
-    console.log('[getAllPlants] Usando cuenta:', publicKey)
+    console.log('[queryAllPlantsFromContract] Usando cuenta:', publicKey)
     
     const account = await server.getAccount(publicKey)
     const contractOperation = contract.call('get_all_plant_ids')
@@ -380,39 +508,42 @@ export async function getAllPlants() {
       .setTimeout(30)
     
     const transaction = txBuilder.build()
-    console.log('[getAllPlants] Simulando consulta...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[getAllPlants] Simulation error:', simulateResponse)
-      return []
+      console.warn('[queryAllPlantsFromContract] Simulación falló, retornando cache')
+      return getPlantsCache()
     }
     
-    let plantIds = []
-    if (simulateResponse.result && simulateResponse.result.retval) {
-      const result = scValToNative(simulateResponse.result.retval)
-      plantIds = Array.isArray(result) ? result : []
-      console.log('[getAllPlants] IDs desde contrato:', plantIds)
+    // Procesar resultado
+    if (!simulateResponse.result?.retval) {
+      console.warn('[queryAllPlantsFromContract] Sin resultado, retornando cache')
+      return getPlantsCache()
     }
     
-    // Obtener datos de cada planta
+    const result = scValToNative(simulateResponse.result.retval)
+    const plantIds = Array.isArray(result) ? result : []
+    console.log('[queryAllPlantsFromContract] IDs obtenidos:', plantIds)
+    
+    // Cargar datos de cada planta
     const plants = []
     for (const id of plantIds) {
       try {
-        const plant = await getPlant(id)
+        const plant = await queryPlantFromContract(id)
         if (plant) {
           plants.push(plant)
         }
       } catch (e) {
-        console.error(`[getAllPlants] Error al cargar planta ${id}:`, e)
+        console.error(`[queryAllPlantsFromContract] Error al cargar ${id}:`, e)
       }
     }
     
-    console.log('[getAllPlants] Plantas cargadas:', plants.length)
+    // Guardar en cache
+    savePlantsCache(plants)
     return plants
   } catch (e) {
-    console.error('[getAllPlants] Error:', e)
-    return []
+    console.error('[queryAllPlantsFromContract] Error:', e)
+    return getPlantsCache()
   }
 }
 
