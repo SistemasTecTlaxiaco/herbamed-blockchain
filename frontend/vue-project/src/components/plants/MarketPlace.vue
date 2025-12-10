@@ -3,6 +3,30 @@
     <div class="card">
       <div class="card-body">
         <h4 class="card-title">💰 Marketplace - Plantas en Venta</h4>
+        
+        <!-- Alert informativo sobre get_all_listings() -->
+        <div class="alert alert-warning mt-3" role="alert">
+          <h5>⚠️ Funcionalidad Pendiente</h5>
+          <p class="mb-0">
+            La función <code>get_all_listings()</code> necesita ser implementada en el contrato.
+            Puedes listar plantas y comprarlas, pero el listado automático de todas las plantas disponibles no está disponible todavía.
+            Puedes consultar listados individuales si conoces el ID de la planta.
+          </p>
+        </div>
+        
+        <!-- Alert banner para mostrar link de Stellar Expert -->
+        <div v-if="lastTransactionLink" class="alert alert-success alert-dismissible fade show mt-3" role="alert">
+          <h5 class="alert-heading">✅ Transacción {{ lastTransactionLink.action }} Exitosa</h5>
+          <p class="mb-1"><strong>ID de Planta:</strong> {{ lastTransactionLink.plantId }}</p>
+          <p class="mb-1"><strong>Hash de Transacción:</strong> <code>{{ lastTransactionLink.transactionHash }}</code></p>
+          <hr>
+          <p class="mb-0">
+            <a :href="lastTransactionLink.link" target="_blank" class="btn btn-sm btn-primary">
+              🔍 Verificar en Stellar Expert
+            </a>
+          </p>
+          <button type="button" class="btn-close" @click="lastTransactionLink = null" aria-label="Close"></button>
+        </div>
 
         <!-- List plant for sale -->
         <div class="card mb-3 bg-light">
@@ -77,12 +101,14 @@ export default {
     const listings = ref([])
     const loading = ref(false)
     const status = ref(null)
+    const lastTransactionLink = ref(null)
 
     async function loadListings() {
       try {
         console.log('[MarketPlace] Cargando listados...')
-        // Cargar listados desde blockchain
-        // Por ahora retorna array vacío hasta implementar query al contrato
+        // TODO: Cargar listados desde blockchain
+        // Necesita implementar get_all_listings() en el contrato
+        // Por ahora, puedes consultar listados individuales si conoces el plantId
         listings.value = []
         console.log('[MarketPlace] Listados cargados:', listings.value.length)
       } catch (e) {
@@ -93,6 +119,7 @@ export default {
 
     async function listPlant() {
       status.value = null
+      lastTransactionLink.value = null
       if (!listForm.value.plantId || !listForm.value.price) {
         status.value = { type: 'error', message: 'Completa ID y precio' }
         return
@@ -102,6 +129,17 @@ export default {
       try {
         console.log('[MarketPlace] Listando planta...')
         const result = await listForSale(listForm.value.plantId, listForm.value.price)
+        
+        // Guardar link de Stellar Expert
+        if (result.stellarExpertLink) {
+          lastTransactionLink.value = {
+            action: 'LISTADO',
+            plantId: result.plantId,
+            transactionHash: result.transactionHash,
+            link: result.stellarExpertLink
+          }
+        }
+        
         status.value = { type: 'success', message: `✅ Planta listada en blockchain` }
         listForm.value = { plantId: '', price: '' }
         await loadListings()
@@ -114,10 +152,22 @@ export default {
 
     async function buyPlant(plantId, price) {
       status.value = null
+      lastTransactionLink.value = null
       loading.value = true
       try {
         console.log('[MarketPlace] Comprando planta:', plantId)
         const result = await buyListing(plantId, price)
+        
+        // Guardar link de Stellar Expert
+        if (result.stellarExpertLink) {
+          lastTransactionLink.value = {
+            action: 'COMPRA',
+            plantId: result.plantId,
+            transactionHash: result.transactionHash,
+            link: result.stellarExpertLink
+          }
+        }
+        
         status.value = { type: 'success', message: `✅ Compra exitosa en blockchain` }
         await loadListings()
       } catch (e) {
@@ -139,7 +189,7 @@ export default {
       }
     })
 
-    return { listForm, listings, loading, status, listPlant, buyPlant }
+    return { listForm, listings, loading, status, lastTransactionLink, listPlant, buyPlant }
   }
 }
 </script>
