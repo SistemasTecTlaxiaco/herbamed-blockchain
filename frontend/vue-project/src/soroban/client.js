@@ -112,16 +112,42 @@ export async function connectWallet(retries = 3) {
 }
 
 export async function submitTx(txXdr) {
-  // Submit a signed XDR directly to RPC (if txXdr looks like signed envelope)
+  // Submit a signed XDR to Soroban RPC using JSON-RPC 2.0 protocol
   try {
-    const url = `${RPC_URL.replace(/\/$/, '')}/send_transaction`
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tx: txXdr }) })
+    console.log('[submitTx] Enviando transacción a:', RPC_URL)
+    
+    // Soroban RPC usa JSON-RPC 2.0, no REST
+    const payload = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'sendTransaction',
+      params: {
+        transaction: txXdr
+      }
+    }
+    
+    const res = await fetch(RPC_URL, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify(payload) 
+    })
+    
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       throw new Error(`RPC send failed: ${res.status} ${res.statusText} ${body}`)
     }
-    return await res.json()
+    
+    const result = await res.json()
+    console.log('[submitTx] Respuesta RPC:', result)
+    
+    // JSON-RPC 2.0 format: {jsonrpc, id, result} o {jsonrpc, id, error}
+    if (result.error) {
+      throw new Error(`RPC error: ${result.error.message || JSON.stringify(result.error)}`)
+    }
+    
+    return result.result || result
   } catch (e) {
+    console.error('[submitTx] Error:', e)
     throw e
   }
 }
