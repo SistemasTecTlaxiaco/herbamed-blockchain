@@ -150,4 +150,5 @@ app.post('/build_invoke', async (req, res) => {
 })
 
 const port = process.env.PORT || 4001
-app.listen(port, () => console.log(`tx_builder_server listening on ${port}`))
+const host = '127.0.0.1'
+app.listen(port, host, () => console.log(`tx_builder_server listening on ${host}:${port}`))
