@@ -2,8 +2,8 @@
 
 Sistema descentralizado de registro, validación y comercio de plantas medicinales construido sobre Stellar/Soroban.
 
-**🎯 Estado:** ✅ **Producción - Funcional Completo**  
-**📅 Última Actualización:** 5 de Diciembre, 2025  
+**🎯 Estado:** ✅ **Transacciones Blockchain Funcionales** (10 Dic 2025)  
+**📅 Última Actualización:** 10 de Diciembre, 2025  
 **🔗 Network:** Stellar Testnet
 
 ---
@@ -16,11 +16,11 @@ git clone https://github.com/RicardoMtzSts/herbamed-blockchain.git
 cd herbamed-blockchain/frontend/vue-project
 npm install
 
-# Configurar
+# Configurar variables de entorno
 cp .env.example .env
-# Editar .env con valores necesarios
+# Editar .env con RPC_URL, CONTRACT_ADDRESS, etc.
 
-# Ejecutar
+# Ejecutar servidor de desarrollo
 npm run dev
 # Abre http://127.0.0.1:3000
 ```
@@ -29,22 +29,28 @@ npm run dev
 
 ## 🎯 Características Principales
 
+✅ **Transacciones Blockchain Funcionales**
+- Registro descentralizado de plantas en Soroban
+- Firma de transacciones con keypair local
+- Envío a RPC con protocolo JSON-RPC 2.0
+- Logs detallados de cada paso
+
 ✅ **Autenticación Multi-Método**
 - Clave Local Cifrada (AES-GCM + PBKDF2)
 - Freighter Desktop Wallet
 - WalletConnect v2 Mobile (QR)
 
-✅ **Smart Contract Funcional**
-- Registro descentralizado de plantas
+✅ **Smart Contract Completo**
+- Registro de plantas medicinales
 - Marketplace compra/venta
 - Sistema de validación comunitario
-- Trazabilidad completa en blockchain
+- Queries read-only de datos
 
-✅ **UI Completa**
+✅ **UI Moderna y Responsiva**
 - Vue 3 + Vite
 - Bootstrap 5 responsive
-- Auth guard en rutas
-- Indicador de cuenta activa + balance
+- Guard de rutas autenticadas
+- Indicador de cuenta conectada
 
 ---
 
@@ -52,13 +58,13 @@ npm run dev
 
 | Documento | Descripción |
 |-----------|-------------|
-| **[PROYECTO_HERBAMED_COMPLETO.md](./PROYECTO_HERBAMED_COMPLETO.md)** | 📖 **Documentación Maestra Completa** |
+| **[STATUS_ACTUAL.md](./STATUS_ACTUAL.md)** | 📊 Estado actual del proyecto (10 dic) |
+| **[PROYECTO_HERBamet_COMPLETO.md](./PROYECTO_HERBAMED_COMPLETO.md)** | 📖 Documentación Maestra Completa |
+| [TRANSACCIONES_GUIA.md](./TRANSACCIONES_GUIA.md) | 📘 Guía detallada de transacciones |
 | [QUICKSTART.md](./QUICKSTART.md) | Guía rápida de inicio |
 | [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) | Guía para desarrolladores |
 | [USER_MANUAL.md](./USER_MANUAL.md) | Manual de usuario |
 | [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md) | Casos de prueba |
-| [NGROK_SETUP.md](./NGROK_SETUP.md) | Setup mobile testing |
-| [.github/copilot-instructions.md](./.github/copilot-instructions.md) | Instrucciones AI agents |
 
 ---
 
@@ -68,16 +74,186 @@ npm run dev
 - Stellar Testnet
 - Soroban Smart Contracts (Rust)
 - Contract: `CA5C74SZ5XHXENOVQ454WQN66PMVSPMIZV5FYUR6OWDUQKC4PKOOXNPR`
+- RPC: https://soroban-testnet.stellar.org
 
 **Frontend**
 - Vue 3.3.8 + Vite 7.2.2
-- Vuex 4.1.0 (state)
-- Vue Router 4.2.5 (routing + guards)
-- Bootstrap 5.3.2 (UI)
+- Bootstrap 5.3.2 UI Components
 - Stellar SDK 14.3.3
+- Vue Router 4.2.5 (con auth guards)
 - WalletConnect v2.23.0
 
+**Desarrollo**
+- Node.js 18+
+- npm/yarn package managers
+
 ---
+
+## 📖 Uso Básico
+
+### 1. **Autenticarse**
+```
+Ir a /login → Seleccionar método:
+✅ Clave Local (testing - sin Freighter)
+✅ Freighter (si está instalado)
+✅ WalletConnect Mobile (escanear QR)
+```
+
+### 2. **Registrar una Planta**
+```
+Click "Registrar" → Llenar formulario:
+- ID: Identificador único
+- Nombre: Ej. "Albaca"
+- Nombre Científico: Ej. "Ocimum basilicum"
+- Propiedades: Array de beneficios medicinales
+
+Click "Registrar Planta" → Transacción firmada y enviada
+```
+
+### 3. **Ver Lista de Plantas**
+```
+Click "Plantas" → Ver todas las plantas registradas
+- Votar por plantas (validadores)
+- Ver estado de validación
+- Acceder al Marketplace
+```
+
+### 4. **Marketplace**
+```
+Desde planta → Click "Marketplace":
+- Listar planta para venta con precio
+- Comprar plantas listadas
+- Ver historial de transacciones
+```
+
+---
+
+## 🏗️ Estructura del Proyecto
+
+```
+herbamed-blockchain/
+├── frontend/
+│   └── vue-project/
+│       ├── src/
+│       │   ├── components/        # Componentes reutilizables
+│       │   │   ├── Login.vue      # Autenticación multi-método
+│       │   │   └── plants/        # Componentes plantas
+│       │   ├── views/             # Vistas principales
+│       │   │   └── plants/        # Listado y registro
+│       │   ├── router/            # Rutas con guards
+│       │   ├── soroban/           # Cliente blockchain
+│       │   │   └── client.js      # API de transacciones (695 líneas)
+│       │   └── store/             # Vuex state
+│       └── package.json
+│
+├── contracts/
+│   └── medicinal-plants/          # Smart contract Soroban (Rust)
+│       ├── src/
+│       │   └── lib.rs             # Lógica del contrato
+│       └── Cargo.toml
+│
+├── docs/
+│   └── [Documentación auxiliar]
+│
+├── README.md                       # Este archivo
+├── STATUS_ACTUAL.md               # Estado actual (nuevo)
+├── TRANSACCIONES_GUIA.md          # Guía de transacciones
+├── PROYECTO_HERBAMED_COMPLETO.md  # Documentación completa
+└── [Otros documentos...]
+```
+
+---
+
+## 🧪 Testing
+
+### Verificar Registro en Blockchain
+```javascript
+// Abrir DevTools → Console
+
+// 1. Ver plantas registradas localmente
+localStorage.getItem('herbamed_plant_ids')
+// Output: ["8000","PlantID-2"]
+
+// 2. Agregar planta de prueba
+localStorage.setItem('herbamed_plant_ids', JSON.stringify(['8000']))
+
+// 3. Recargar lista
+location.reload()
+
+// 4. Ver logs de transacciones
+// Buscar en consola: [registerPlant], [getPlant], [getAllPlants]
+```
+
+### Verificar en Stellar Explorer
+```
+1. Ir a https://stellar.expert/explorer/testnet
+2. Buscar tu wallet (public key)
+3. Ver transacciones registradas
+4. Verificar cambios en account info
+```
+
+---
+
+## 🚀 Roadmap
+
+### ✅ Completado
+- Registro de plantas en blockchain
+- Firma local de transacciones
+- Autenticación multi-método
+- Interfaz de usuario básica
+
+### 🔄 En Desarrollo
+- Carga dinámica de plantas registradas
+- Sistema de votación completo
+- Marketplace funcional
+
+### 📋 Próximamente
+- Optimización de gas
+- Mejoras UX/UI
+- Testing completo
+- Deploy en Mainnet
+
+---
+
+## ⚠️ Notas Importantes
+
+1. **Desarrollo Solamente:**
+   - Keypair local: `SC6F34PGDRKMIPIWIWZOHLHQE7L27DWNVCUD2UKNER7ZLWNKHPQHFNHR`
+   - Nunca usar en producción
+   - Fondos limitados en testnet
+
+2. **RPC Testnet:**
+   - Endpoint: https://soroban-testnet.stellar.org
+   - Límite: 100 req/min por IP
+   - Latencia: 1-2 segundos
+
+3. **LocalStorage:**
+   - `herbamed_plant_ids`: Tracking de plantas
+   - `soroban_auth`: Datos de autenticación
+   - Se limpia al borrar datos del navegador
+
+---
+
+## 🔗 Enlaces Útiles
+
+- **GitHub:** https://github.com/RicardoMtzSts/herbamed-blockchain
+- **Smart Contract:** CA5C74SZ5XHXENOVQ454WQN66PMVSPMIZV5FYUR6OWDUQKC4PKOOXNPR
+- **Stellar Testnet:** https://stellar.expert/explorer/testnet
+- **Documentación Stellar:** https://developers.stellar.org
+
+---
+
+## 📞 Soporte
+
+Para reportar issues o contribuir:
+1. Abrir issue en GitHub
+2. Describir problema/feature
+3. Proporcionar logs de consola
+
+---
+
+**Actualizado:** 10 de Diciembre, 2025
+
 
 ## 🚀 Uso
 
