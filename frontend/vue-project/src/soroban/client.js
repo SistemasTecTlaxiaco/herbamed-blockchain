@@ -13,6 +13,9 @@ const nativeToScVal = stellar.nativeToScVal
 const scValToNative = stellar.scValToNative
 const xdr = stellar.xdr
 
+import { getTransactionUrl, getAccountUrl } from './stellar-expert.js'
+import { queryPlant, queryPlantVotes, queryListing } from './queries.js'
+
 // Soroban client helpers for blockchain operations
 const LOCAL_SECRET_KEY = 'soroban_secret'
 
@@ -346,100 +349,46 @@ export async function registerPlant(plantData) {
     args: [id, name, scientificName, properties] 
   })
   
-  // Guardar ID en localStorage para poder listar después
-  addRegisteredPlantId(id)
+  // Guardar ID en sessionStorage temporal
+  const sessionPlants = JSON.parse(sessionStorage.getItem('currentSessionPlants') || '[]')
+  if (!sessionPlants.includes(id)) {
+    sessionPlants.push(id)
+    sessionStorage.setItem('currentSessionPlants', JSON.stringify(sessionPlants))
+  }
   
-  // Guardar planta completa en caché local como fallback
-  const plantObject = {
-    id,
-    name,
-    scientific_name: scientificName,
-    properties,
-    validated: false,
-    validator: ''
-  }
-  savePlantToLocalCache(plantObject)
+  const txHash = resp?.hash || resp?.id || 'pending'
   
-  return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
-}
-
-// LocalStorage helpers para rastrear plantas registradas (caché local)
-function getRegisteredPlantIds() {
-  try {
-    const ids = localStorage.getItem('herbamed_plant_ids')
-    return ids ? JSON.parse(ids) : []
-  } catch (e) {
-    console.error('[getRegisteredPlantIds] Error:', e)
-    return []
+  return { 
+    success: true, 
+    plantId: id, 
+    transactionHash: txHash,
+    explorerUrl: getTransactionUrl(txHash)
   }
-}
-
-function addRegisteredPlantId(plantId) {
-  try {
-    const ids = getRegisteredPlantIds()
-    if (!ids.includes(plantId)) {
-      ids.push(plantId)
-      localStorage.setItem('herbamed_plant_ids', JSON.stringify(ids))
-      console.log('[addRegisteredPlantId] Planta agregada al registro local:', plantId)
-    }
-  } catch (e) {
-    console.error('[addRegisteredPlantId] Error:', e)
-  }
-}
-
-// Guardar planta en caché local (como fallback si el contrato no persiste)
-function savePlantToLocalCache(plant) {
-  try {
-    const cacheKey = `herbamed_plant_${plant.id}`
-    localStorage.setItem(cacheKey, JSON.stringify(plant))
-    console.log('[savePlantToLocalCache] Planta guardada en caché local:', plant.id)
-  } catch (e) {
-    console.error('[savePlantToLocalCache] Error:', e)
-  }
-}
-
-// Obtener planta del caché local
-function getPlantFromLocalCache(plantId) {
-  try {
-    const cacheKey = `herbamed_plant_${plantId}`
-    const cached = localStorage.getItem(cacheKey)
-    if (cached) {
-      console.log('[getPlantFromLocalCache] Planta encontrada en caché:', plantId)
-      return JSON.parse(cached)
-    }
-  } catch (e) {
-    console.error('[getPlantFromLocalCache] Error:', e)
-  }
-  return null
 }
 
 export async function getAllPlants() {
-  // Query contract for all registered plants
-  // Como el contrato tiene problemas de persistencia en testnet, usamos caché local
-  const plantIds = getRegisteredPlantIds()
-  console.log('[getAllPlants] IDs registrados localmente:', plantIds)
+  console.log('[getAllPlants] Obteniendo plantas de sesión actual')
+  
+  const sessionPlants = JSON.parse(sessionStorage.getItem('currentSessionPlants') || '[]')
+  
+  if (sessionPlants.length === 0) {
+    console.log('[getAllPlants] No hay plantas en sesión actual')
+    return []
+  }
+  
+  console.log('[getAllPlants] IDs en sesión:', sessionPlants)
   
   const plants = []
-  for (const id of plantIds) {
+  for (const id of sessionPlants) {
     try {
-      // Primero intentar obtener del caché local
-      let plant = getPlantFromLocalCache(id)
-      
-      if (!plant) {
-        // Si no está en caché, intentar obtener del contrato
-        plant = await getPlant(id)
-      }
-      
+      const plant = await queryPlant(id)
       if (plant) {
+        const votes = await queryPlantVotes(id)
+        plant.votes = votes
         plants.push(plant)
       }
-    } catch (e) {
-      console.error(`[getAllPlants] Error al cargar planta ${id}:`, e)
-      // Intenta al menos usar caché si falla el contrato
-      const cached = getPlantFromLocalCache(id)
-      if (cached) {
-        plants.push(cached)
-      }
+    } catch (error) {
+      console.warn(`[getAllPlants] Error al cargar planta ${id}:`, error)
     }
   }
   
@@ -557,7 +506,14 @@ export async function voteForPlant(plantId) {
     args: [plantId, publicKey] 
   })
   
-  return { success: true, plantId, transactionHash: resp?.hash || 'pending' }
+  const txHash = resp?.hash || resp?.id || 'pending'
+  
+  return { 
+    success: true, 
+    plantId, 
+    transactionHash: txHash,
+    explorerUrl: getTransactionUrl(txHash)
+  }
 }
 
 export function isFreighterInstalled() {
@@ -693,10 +649,17 @@ export async function listForSale(plantId, price) {
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'list_for_sale', 
-    args: [plantId, publicKey, priceNum] 
+    args: [plantId, publicKey, price] 
   })
   
-  return { success: true, plantId, price: priceNum, transactionHash: resp?.hash || 'pending' }
+  const txHash = resp?.hash || resp?.id || 'pending'
+  
+  return { 
+    success: true, 
+    transactionHash: txHash,
+    seller: publicKey,
+    explorerUrl: getTransactionUrl(txHash)
+  }
 }
 
 export async function buyListing(plantId) {
@@ -712,33 +675,24 @@ export async function buyListing(plantId) {
     args: [plantId, publicKey] 
   })
   
-  return { success: true, plantId, transactionHash: resp?.hash || 'pending' }
+  const txHash = resp?.hash || resp?.id || 'pending'
+  
+  return { 
+    success: true, 
+    plantId, 
+    transactionHash: txHash,
+    explorerUrl: getTransactionUrl(txHash)
+  }
 }
 
 export async function getListing(plantId) {
-  // Query contract for listing details
-  // Contract signature: get_listing implícito via DataKey::Listing
-  try {
-    console.log('[getListing] Consultando listing:', plantId)
-    // Por ahora retorna estructura básica - TODO: implementar query real
-    return { plantId, available: false, price: null, seller: null }
-  } catch (e) {
-    console.error('[getListing] Error:', e)
-    return { plantId, available: false, price: null, seller: null }
-  }
+  console.log('[getListing] Obteniendo listing:', plantId)
+  return await queryListing(plantId)
 }
 
 export async function getPlantVotes(plantId) {
-  // Query contract for vote count
-  // El contrato almacena votos en DataKey::PlantVotes(plant_id)
-  try {
-    console.log('[getPlantVotes] Consultando votos:', plantId)
-    // Por ahora retorna 0 - TODO: implementar query real con RPC
-    return 0
-  } catch (e) {
-    console.error('[getPlantVotes] Error:', e)
-    return 0
-  }
+  console.log('[getPlantVotes] Obteniendo votos de planta:', plantId)
+  return await queryPlantVotes(plantId)
 }
 
 export async function isValidator(address) {
