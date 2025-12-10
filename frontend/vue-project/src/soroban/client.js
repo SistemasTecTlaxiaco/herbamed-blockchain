@@ -10,6 +10,7 @@ const Contract = stellar.Contract
 const Address = stellar.Address
 const rpc = stellar.rpc  // ✅ CORRECTO: es 'rpc' minúscula, no 'SorobanRpc'
 const nativeToScVal = stellar.nativeToScVal
+const scValToNative = stellar.scValToNative
 const xdr = stellar.xdr
 
 // Soroban client helpers for blockchain operations
@@ -345,28 +346,110 @@ export async function registerPlant(plantData) {
     args: [id, name, scientificName, properties] 
   })
   
+  // Guardar ID en localStorage para poder listar después
+  addRegisteredPlantId(id)
+  
   return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
 }
 
+// LocalStorage helpers para rastrear plantas registradas
+function getRegisteredPlantIds() {
+  try {
+    const ids = localStorage.getItem('herbamed_plant_ids')
+    return ids ? JSON.parse(ids) : []
+  } catch (e) {
+    console.error('[getRegisteredPlantIds] Error:', e)
+    return []
+  }
+}
+
+function addRegisteredPlantId(plantId) {
+  try {
+    const ids = getRegisteredPlantIds()
+    if (!ids.includes(plantId)) {
+      ids.push(plantId)
+      localStorage.setItem('herbamed_plant_ids', JSON.stringify(ids))
+      console.log('[addRegisteredPlantId] Planta agregada al registro local:', plantId)
+    }
+  } catch (e) {
+    console.error('[addRegisteredPlantId] Error:', e)
+  }
+}
+
 export async function getAllPlants() {
-  // Query contract for all plants
-  // Por ahora retorna array vacío hasta implementar query real con RPC
-  // TODO: Implementar llamada a get_plant para cada ID conocido
-  return []
+  // Query contract for all registered plants
+  // Como el contrato no tiene get_all_plants, consultamos cada ID registrado
+  const plantIds = getRegisteredPlantIds()
+  console.log('[getAllPlants] IDs registrados localmente:', plantIds)
+  
+  const plants = []
+  for (const id of plantIds) {
+    try {
+      const plant = await getPlant(id)
+      if (plant) {
+        plants.push(plant)
+      }
+    } catch (e) {
+      console.error(`[getAllPlants] Error al cargar planta ${id}:`, e)
+    }
+  }
+  
+  console.log('[getAllPlants] Plantas cargadas:', plants.length)
+  return plants
 }
 
 export async function getPlant(plantId) {
-  // Query contract for specific plant
+  // Query contract for specific plant (read-only)
   // Contract signature: get_plant(id: String) -> Option<MedicinalPlant>
   try {
     console.log('[getPlant] Consultando planta:', plantId)
-    const resp = await submitOperation({ 
-      contractId: CONTRACT_ADDRESS, 
-      method: 'get_plant', 
-      args: [plantId],
-      readOnly: true // Query, no transaction
+    
+    // Para queries read-only, usamos simulación sin firmar/enviar
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      console.warn('[getPlant] No hay cuenta conectada, usando cuenta dummy')
+      // Usar cuenta dummy para query
+      const dummyKeypair = Keypair.random()
+      const sourceAccount = await server.getAccount(dummyKeypair.publicKey())
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const args = [nativeToScVal(plantId, {type: 'string'})]
+    
+    const contractOperation = contract.call('get_plant', ...args)
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
     })
-    return resp || null
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getPlant] Simulation error:', simulateResponse)
+      return null
+    }
+    
+    // Parse result from simulation
+    if (simulateResponse.result && simulateResponse.result.retval) {
+      const result = simulateResponse.result.retval
+      console.log('[getPlant] Resultado:', result)
+      
+      // Convert ScVal to JS object
+      // MedicinalPlant { id, name, scientific_name, properties, validated, validator }
+      if (result._switch && result._switch.name === 'scvVec') {
+        const plant = scValToNative(result)
+        console.log('[getPlant] Planta encontrada:', plant)
+        return plant
+      }
+    }
+    
+    return null
   } catch (e) {
     console.error('[getPlant] Error:', e)
     return null
