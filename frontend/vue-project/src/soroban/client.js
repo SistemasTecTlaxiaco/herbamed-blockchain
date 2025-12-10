@@ -289,7 +289,7 @@ export async function submitOperation(operation = {}) {
     console.log('[submitOperation] Firmando con keypair local...')
     const kp = getLocalKeypair()
     if (!kp) throw new Error('No signer available (Freighter or local key)')
-    const txObj = Transaction.fromXDR(unsignedXDR, networkPassphrase)
+    const txObj = TransactionBuilder.fromXDR(unsignedXDR, networkPassphrase)
     txObj.sign(kp)
     signedXDR = txObj.toXDR()
     console.log('[submitOperation] ✅ Firmado con keypair local')
