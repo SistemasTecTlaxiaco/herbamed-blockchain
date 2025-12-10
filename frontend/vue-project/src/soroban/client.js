@@ -1,7 +1,16 @@
 import * as stellar from '@stellar/stellar-sdk'
 import { CONTRACT_ADDRESS, RPC_URL, NETWORK, SECRET_KEY, TX_BUILDER_URL } from './config.js'
 
-const { Keypair, TransactionBuilder, Networks, xdr, Transaction, SorobanRpc, scValToNative } = stellar
+// Importar directamente las clases que necesitamos
+const Keypair = stellar.Keypair
+const TransactionBuilder = stellar.TransactionBuilder
+const Networks = stellar.Networks
+const Transaction = stellar.Transaction
+const Contract = stellar.Contract
+const Address = stellar.Address
+const SorobanRpc = stellar.SorobanRpc
+const nativeToScVal = stellar.nativeToScVal
+const xdr = stellar.xdr
 
 // Soroban client helpers for blockchain operations
 const LOCAL_SECRET_KEY = 'soroban_secret'
@@ -119,43 +128,70 @@ export async function submitTx(txXdr) {
 
 // Helper to convert JS values to Soroban scVal types
 function toScVal(value) {
+  // Si ya es un ScVal, devolverlo directamente
+  if (value && value._attributes) {
+    return value
+  }
+  
   if (typeof value === 'string') {
-    return stellar.xdr.ScVal.scvString(value)
+    // Check if it's an address (starts with G or C)
+    if (value.startsWith('G') || value.startsWith('C')) {
+      try {
+        return new Address(value).toScVal()
+      } catch (e) {
+        // If not a valid address, treat as string
+        return xdr.ScVal.scvString(Buffer.from(value))
+      }
+    }
+    return xdr.ScVal.scvString(Buffer.from(value))
   }
-  if (typeof value === 'number') {
-    return stellar.nativeToScVal(value, { type: 'i128' })
+  
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return nativeToScVal(value, { type: 'i128' })
   }
+  
   if (typeof value === 'boolean') {
-    return stellar.xdr.ScVal.scvBool(value)
+    return xdr.ScVal.scvBool(value)
   }
+  
   if (Array.isArray(value)) {
     const scVals = value.map(v => toScVal(v))
-    return stellar.xdr.ScVal.scvVec(scVals)
+    return xdr.ScVal.scvVec(scVals)
   }
-  // If it's an address string (G... or C...)
-  if (typeof value === 'string' && (value.startsWith('G') || value.startsWith('C'))) {
-    const addr = new stellar.Address(value)
-    return addr.toScVal()
-  }
-  throw new Error(`Unsupported type for value: ${typeof value}`)
+  
+  throw new Error(`Unsupported type for value: ${typeof value}, value: ${value}`)
 }
 
 // Build transaction locally using Stellar SDK
 async function buildTransactionLocally(operation, sourcePublicKey) {
   try {
     console.log('[buildTransactionLocally] Construyendo transacción para:', operation.method)
+    console.log('[buildTransactionLocally] Args:', operation.args)
     
     const contractAddress = operation.contractId || CONTRACT_ADDRESS
+    
+    // Verificar que SorobanRpc existe
+    if (!SorobanRpc || !SorobanRpc.Server) {
+      throw new Error('SorobanRpc.Server no está disponible en el SDK')
+    }
+    
     const server = new SorobanRpc.Server(RPC_URL)
+    console.log('[buildTransactionLocally] Servidor RPC creado:', RPC_URL)
     
     // Get source account
     const sourceAccount = await server.getAccount(sourcePublicKey)
+    console.log('[buildTransactionLocally] Cuenta obtenida:', sourcePublicKey)
     
     // Convert args to ScVal
-    const scArgs = (operation.args || []).map(arg => toScVal(arg))
+    const scArgs = (operation.args || []).map(arg => {
+      const scVal = toScVal(arg)
+      console.log('[buildTransactionLocally] Arg convertido:', arg, '→', scVal)
+      return scVal
+    })
     
-    // Create contract address
-    const contract = new stellar.Contract(contractAddress)
+    // Create contract
+    const contract = new Contract(contractAddress)
+    console.log('[buildTransactionLocally] Contrato creado:', contractAddress)
     
     // Build the operation
     let contractOperation
@@ -174,6 +210,7 @@ async function buildTransactionLocally(operation, sourcePublicKey) {
       .setTimeout(30)
     
     let transaction = txBuilder.build()
+    console.log('[buildTransactionLocally] Transacción construida, simulando...')
     
     // Simulate to get the correct resource fees
     console.log('[buildTransactionLocally] Simulando transacción...')
@@ -247,7 +284,7 @@ export async function submitOperation(operation = {}) {
     console.log('[submitOperation] Firmando con keypair local...')
     const kp = getLocalKeypair()
     if (!kp) throw new Error('No signer available (Freighter or local key)')
-    const txObj = stellar.Transaction.fromXDR(unsignedXDR, networkPassphrase)
+    const txObj = Transaction.fromXDR(unsignedXDR, networkPassphrase)
     txObj.sign(kp)
     signedXDR = txObj.toXDR()
     console.log('[submitOperation] ✅ Firmado con keypair local')
