@@ -407,17 +407,18 @@ export async function getPlant(plantId) {
     // Para queries read-only, usamos simulación sin firmar/enviar
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
     
     if (!publicKey) {
-      console.warn('[getPlant] No hay cuenta conectada, usando cuenta dummy')
-      // Usar cuenta dummy para query
-      const dummyKeypair = Keypair.random()
-      const sourceAccount = await server.getAccount(dummyKeypair.publicKey())
+      console.warn('[getPlant] No hay cuenta conectada, generando dummy')
+      // Usar cuenta dummy para query si no hay cuenta conectada
+      publicKey = Keypair.random().publicKey()
     }
     
     const account = await server.getAccount(publicKey)
     const args = [nativeToScVal(plantId, {type: 'string'})]
+    
+    console.log('[getPlant] Args convertidos:', args)
     
     const contractOperation = contract.call('get_plant', ...args)
     const txBuilder = new TransactionBuilder(account, {
@@ -428,6 +429,7 @@ export async function getPlant(plantId) {
       .setTimeout(30)
     
     const transaction = txBuilder.build()
+    console.log('[getPlant] Simulando transacción...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
@@ -435,21 +437,57 @@ export async function getPlant(plantId) {
       return null
     }
     
+    console.log('[getPlant] Simulación exitosa')
+    
     // Parse result from simulation
-    if (simulateResponse.result && simulateResponse.result.retval) {
-      const result = simulateResponse.result.retval
-      console.log('[getPlant] Resultado:', result)
+    if (!simulateResponse.result || !simulateResponse.result.retval) {
+      console.warn('[getPlant] Sin resultado en simulación')
+      return null
+    }
+    
+    const result = simulateResponse.result.retval
+    console.log('[getPlant] Resultado ScVal:', JSON.stringify(result, null, 2))
+    
+    // El contrato retorna Option<MedicinalPlant>
+    // Option es: None (0) o Some(T) (1 + struct)
+    try {
+      const plant = scValToNative(result)
+      console.log('[getPlant] Planta convertida:', plant)
       
-      // Convert ScVal to JS object
-      // MedicinalPlant { id, name, scientific_name, properties, validated, validator }
-      if (result._switch && result._switch.name === 'scvVec') {
-        const plant = scValToNative(result)
+      // Si es null/undefined, significa Option::None
+      if (plant === null || plant === undefined) {
+        console.log('[getPlant] Planta no encontrada (Option::None)')
+        return null
+      }
+      
+      // Si es array, podría ser Some(struct) - los structs a veces se devuelven como arrays
+      if (Array.isArray(plant)) {
+        console.log('[getPlant] Planta es array, convirtiendo...')
+        // Intentar convertir array en objeto
+        const converted = {
+          id: plant[0] || '',
+          name: plant[1] || '',
+          scientific_name: plant[2] || '',
+          properties: Array.isArray(plant[3]) ? plant[3] : [],
+          validated: Boolean(plant[4]),
+          validator: plant[5] || ''
+        }
+        console.log('[getPlant] Planta encontrada:', converted)
+        return converted
+      }
+      
+      // Si es objeto directo
+      if (typeof plant === 'object' && plant !== null) {
         console.log('[getPlant] Planta encontrada:', plant)
         return plant
       }
+      
+      console.warn('[getPlant] Formato de resultado inesperado:', typeof plant)
+      return null
+    } catch (convertError) {
+      console.error('[getPlant] Error al convertir ScVal:', convertError)
+      return null
     }
-    
-    return null
   } catch (e) {
     console.error('[getPlant] Error:', e)
     return null

@@ -86,13 +86,21 @@ export default {
       try {
         loading.value = true
         console.log('[PlantRegistration] Registrando planta...')
-        await soroban.registerPlant({
+        const result = await soroban.registerPlant({
           id: plant.value.id,
           name: plant.value.name,
           scientificName: plant.value.scientificName,
           properties: plant.value.properties
         })
-        console.log('[PlantRegistration] Planta registrada - navegando a /plants')
+        console.log('[PlantRegistration] Planta registrada:', result.plantId)
+        
+        // Esperar un poco para que el localStorage se actualice
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        // Disparar evento para que PlantList se recargue
+        window.dispatchEvent(new Event('plant-registered'))
+        
+        console.log('[PlantRegistration] Navegando a /plants')
         router.push('/plants')
       } catch (error) {
         console.error('[PlantRegistration] Error al registrar planta:', error)

@@ -128,16 +128,39 @@ export default {
     
     // Montar y cargar datos la primera vez
     onMounted(async () => {
+      console.log('[PlantList] Componente montada')
       await loadPlants()
+      
+      // Escuchar evento de planta registrada
+      window.addEventListener('plant-registered', async () => {
+        console.log('[PlantList] Evento plant-registered detectado - recargando datos')
+        await loadPlants()
+      })
     })
     
     // Watchers para refrescar datos cuando regresas a esta ruta
     watch(() => route.path, async (newPath) => {
       if (newPath === '/plants') {
         console.log('[PlantList] Ruta /plants detectada - recargando datos')
-        await loadPlants()
+        // Dar tiempo a que localStorage se actualice
+        setTimeout(async () => await loadPlants(), 100)
       }
     })
+    
+    // También espiar cambios en localStorage
+    const handleStorageChange = () => {
+      console.log('[PlantList] localStorage cambió - recargando datos')
+      loadPlants()
+    }
+    
+    onMounted(() => {
+      window.addEventListener('storage', handleStorageChange)
+    })
+    
+    // Cleanup
+    const cleanup = () => {
+      window.removeEventListener('storage', handleStorageChange)
+    }
     
     return {
       plants,
@@ -145,7 +168,8 @@ export default {
       status,
       loadPlants,
       voteForPlant,
-      navigateToMarketplace
+      navigateToMarketplace,
+      cleanup
     }
   }
 }
