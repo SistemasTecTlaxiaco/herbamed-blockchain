@@ -138,19 +138,56 @@ export async function submitTx(txXdr) {
       throw new Error(`RPC send failed: ${res.status} ${res.statusText} ${body}`)
     }
     
-    const result = await res.json()
-    console.log('[submitTx] Respuesta RPC:', result)
+    const rpcResp = await res.json()
+    console.log('[submitTx] Respuesta RPC:', rpcResp)
     
     // JSON-RPC 2.0 format: {jsonrpc, id, result} o {jsonrpc, id, error}
-    if (result.error) {
-      throw new Error(`RPC error: ${result.error.message || JSON.stringify(result.error)}`)
+    if (rpcResp.error) {
+      throw new Error(`RPC error: ${rpcResp.error.message || JSON.stringify(rpcResp.error)}`)
     }
-    
-    return result.result || result
+
+    const result = rpcResp.result || rpcResp
+
+    // Soroban sendTransaction returns a status: PENDING | DUPLICATE | TRY_AGAIN_LATER | ERROR | SUCCESS
+    if (result.status && result.status !== 'PENDING' && result.status !== 'SUCCESS') {
+      throw new Error(`sendTransaction status: ${result.status} ${result.errorResultXdr ? '(ver errorResultXdr)' : ''}`)
+    }
+
+    // Si está pendiente, intentar poll para confirmar
+    if (result.status === 'PENDING' && result.hash) {
+      const confirmed = await pollTransaction(result.hash)
+      return confirmed || result
+    }
+
+    return result
   } catch (e) {
     console.error('[submitTx] Error:', e)
     throw e
   }
+}
+
+async function pollTransaction(hash, timeoutMs = 20000, intervalMs = 2000) {
+  const server = new rpc.Server(RPC_URL)
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const txResp = await server.getTransaction(hash)
+      if (txResp.status === 'SUCCESS') {
+        console.log('[pollTransaction] ✅ Confirmada:', hash)
+        return txResp
+      }
+      if (txResp.status === 'FAILED' || txResp.status === 'ERROR') {
+        throw new Error(`Transaction failed: ${txResp.resultXdr || txResp.status}`)
+      }
+      // PENDING o NOT_FOUND, esperar
+      await new Promise(r => setTimeout(r, intervalMs))
+    } catch (err) {
+      console.warn('[pollTransaction] Estado no confirmado aún:', err.message || err)
+      await new Promise(r => setTimeout(r, intervalMs))
+    }
+  }
+  console.warn('[pollTransaction] Timeout esperando confirmación de', hash)
+  return null
 }
 
 // Helper to convert JS values to Soroban scVal types
