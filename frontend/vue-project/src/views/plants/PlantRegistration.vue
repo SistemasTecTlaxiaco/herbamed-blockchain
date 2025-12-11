@@ -3,16 +3,30 @@
     <h2>Registro de Plantas Medicinales</h2>
     
     <!-- Alert de éxito con enlace a Stellar Explorer -->
-    <div v-if="transactionHash" class="alert alert-success alert-dismissible fade show" role="alert">
+    <div v-if="transactionHash && transactionHash !== 'pending'" class="alert alert-success alert-dismissible fade show" role="alert">
       <h5 class="alert-heading">✅ Planta registrada exitosamente!</h5>
       <p class="mb-2"><strong>ID:</strong> {{ registeredPlantId }}</p>
       <hr>
-      <p class="mb-0">
-        <strong>Verificar transacción en Stellar Explorer:</strong><br>
-        <a :href="explorerLink" target="_blank" class="alert-link">
-          {{ transactionHash }} →
-        </a>
+      <p class="mb-2">
+        <strong>Hash de Transacción:</strong><br>
+        <code class="text-dark">{{ transactionHash }}</code>
       </p>
+      <p class="mb-0">
+        <a :href="explorerLink" target="_blank" class="btn btn-sm btn-outline-primary">
+          Ver en Stellar Expert →
+        </a>
+        <small class="d-block mt-2 text-muted">
+          ⏱️ La transacción puede tardar unos segundos en aparecer en el explorador.
+        </small>
+      </p>
+      <button type="button" class="btn-close" @click="clearSuccess"></button>
+    </div>
+    
+    <!-- Alert cuando está pendiente -->
+    <div v-else-if="transactionHash === 'pending'" class="alert alert-warning alert-dismissible fade show" role="alert">
+      <h5 class="alert-heading">⏳ Transacción enviada...</h5>
+      <p class="mb-0"><strong>ID:</strong> {{ registeredPlantId }}</p>
+      <p class="mb-0"><small>La transacción está siendo procesada. Esto puede tardar unos segundos.</small></p>
       <button type="button" class="btn-close" @click="clearSuccess"></button>
     </div>
     
