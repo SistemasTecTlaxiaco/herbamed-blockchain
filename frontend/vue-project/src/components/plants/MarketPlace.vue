@@ -105,9 +105,9 @@
         <button 
           class="btn btn-success w-100 mt-3" 
           @click="createListing"
-          :disabled="listing || !newListing.plantId || !newListing.price"
+          :disabled="creatingListing || !newListing.plantId || !newListing.price"
         >
-          {{ listing ? '⏳ Creando listing...' : '📦 Poner en venta' }}
+          {{ creatingListing ? '⏳ Creando listing...' : '📦 Poner en venta' }}
         </button>
       </div>
     </div>
@@ -138,7 +138,7 @@ export default {
   setup() {
     const listings = ref([])
     const buying = ref(null)
-    const listing = ref(false)
+    const creatingListing = ref(false)
     const searching = ref(false)
     const searchId = ref('')
     const newListing = ref({ plantId: '', price: 0 })
@@ -235,7 +235,7 @@ export default {
     
     const createListing = async () => {
       try {
-        listing.value = true
+        creatingListing.value = true
         status.value = null
         
         console.log('[MarketPlace] Creando listing:', newListing.value)
@@ -259,7 +259,7 @@ export default {
           message: `❌ Error al crear listing: ${error.message}`
         }
       } finally {
-        listing.value = false
+        creatingListing.value = false
       }
     }
     
@@ -303,7 +303,7 @@ export default {
     return {
       listings,
       buying,
-      listing,
+      creatingListing,
       searching,
       searchId,
       newListing,

@@ -2,10 +2,10 @@
   <div class="container mt-4">
     <h2>🌿 Lista de Plantas Medicinales</h2>
     
-    <!-- Búsqueda opcional -->
+    <!-- Búsqueda de plantas (opcional) -->
     <div class="card mb-4">
       <div class="card-body">
-        <h5>Buscar Planta por ID</h5>
+        <h5>🔍 Buscar Planta por ID</h5>
         <div class="input-group">
           <input 
             v-model="searchId" 
@@ -15,7 +15,7 @@
             @keyup.enter="searchPlant"
           />
           <button 
-            class="btn btn-primary" 
+            class="btn btn-success" 
             @click="searchPlant"
             :disabled="searching || !searchId"
           >
@@ -28,33 +28,37 @@
       </div>
     </div>
     
-    <!-- Indicador de carga -->
+    <!-- Indicador de carga inicial -->
     <div v-if="loading" class="alert alert-info">
       <h5>⏳ Cargando plantas desde blockchain...</h5>
-    </div>
-    
-    <!-- Lista vacía -->
-    <div v-else-if="plants.length === 0" class="alert alert-info">
-      <h5>📭 No hay plantas registradas</h5>
-      <p class="mb-0">
-        Ve a <strong>Registrar</strong> para agregar una nueva planta a la blockchain.
-      </p>
+      <p class="mb-0">Esto puede tomar algunos segundos.</p>
     </div>
     
     <!-- Lista de plantas -->
     <div v-else>
-      <h3 class="mt-4">Plantas Registradas ({{ plants.length }})</h3>
+      <h3 class="mt-4">
+        🌿 Plantas Registradas 
+        <span class="badge bg-primary">{{ plants.length }}</span>
+      </h3>
       
-      <div class="row mt-3">
-        <div class="col-md-6 mb-4" v-for="plant in plants" :key="plant.id">
-          <div class="card h-100">
-            <div class="card-body d-flex flex-column">
-              <h5 class="card-title">🌿 {{ plant.name }}</h5>
-              <h6 class="card-subtitle mb-2 text-muted">{{ plant.scientific_name }}</h6>
-              <div class="card-text flex-grow-1">
-                <p><small class="text-muted">ID: {{ plant.id }}</small></p>
-                <p><strong>Propiedades:</strong></p>
-                <ul class="mb-2">
+      <div v-if="plants.length === 0" class="alert alert-info">
+        <h5>📭 No hay plantas registradas aún</h5>
+        <p class="mb-0">
+          Ve a <strong>Registrar</strong> para crear una nueva planta medicinal.
+        </p>
+      </div>
+    </div>
+    
+    <div class="row mt-3">
+      <div class="col-md-6 mb-4" v-for="plant in plants" :key="plant.id">
+        <div class="card h-100">
+          <div class="card-body d-flex flex-column">
+            <h5 class="card-title">🌿 {{ plant.name }}</h5>
+            <h6 class="card-subtitle mb-2 text-muted">{{ plant.scientific_name }}</h6>
+            <div class="card-text flex-grow-1">
+              <p><small class="text-muted">ID: {{ plant.id }}</small></p>
+              <p><strong>Propiedades:</strong></p>
+              <ul class="mb-2">
                 <li v-for="(property, index) in plant.properties" :key="index">
                   {{ property }}
                 </li>
@@ -100,33 +104,33 @@ export default {
   name: 'PlantList',
   setup() {
     const plants = ref([])
+    const loading = ref(true)
     const searching = ref(false)
     const searchId = ref('')
     const status = ref(null)
-    const loading = ref(false)
     
-    // Cargar TODAS las plantas del blockchain
+    // Cargar TODAS las plantas desde blockchain
     const loadAllPlants = async () => {
       try {
         loading.value = true
-        console.log('[PlantList] Cargando todas las plantas del blockchain...')
+        console.log('[PlantList] Cargando todas las plantas desde blockchain...')
         
         const allPlants = await soroban.getAllPlants()
-        console.log('[PlantList] Plantas obtenidas:', allPlants)
+        console.log('[PlantList] Plantas obtenidas del contrato:', allPlants.length)
         
-        // Enriquecer con votos
+        // Enriquecer cada planta con votos
         for (const plant of allPlants) {
           try {
             const votes = await soroban.getPlantVotes(plant.id)
-            plant.votes = votes
+            plant.votes = votes || 0
           } catch (error) {
-            console.warn(`[PlantList] Error al obtener votos para ${plant.id}:`, error)
+            console.warn(`[PlantList] No se pudieron cargar votos para ${plant.id}:`, error)
             plant.votes = 0
           }
         }
         
         plants.value = allPlants
-        console.log('[PlantList] Total plantas cargadas:', plants.value.length)
+        console.log('[PlantList] Plantas cargadas con votos:', plants.value.length)
       } catch (error) {
         console.error('[PlantList] Error al cargar plantas:', error)
         status.value = {
@@ -138,7 +142,7 @@ export default {
       }
     }
     
-    // Buscar planta adicional por ID
+    // Buscar planta específica por ID
     const searchPlant = async () => {
       if (!searchId.value.trim()) return
       
@@ -169,7 +173,7 @@ export default {
         
         // Obtener votos
         const votes = await soroban.getPlantVotes(plant.id)
-        plant.votes = votes
+        plant.votes = votes || 0
         
         plants.value.push(plant)
         
@@ -191,16 +195,16 @@ export default {
     }
     
     onMounted(() => {
-      console.log('[PlantList] Componente montado')
+      console.log('[PlantList] Componente montado - Cargando plantas')
       loadAllPlants()
     })
     
     return {
       plants,
+      loading,
       searching,
       searchId,
       status,
-      loading,
       searchPlant
     }
   }
