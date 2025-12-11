@@ -780,12 +780,6 @@ export async function getPlantVotes(plantId) {
   }
 }
 
-export async function getStellarExplorerLink(transactionHash) {
-  // Generate Stellar Explorer link for transaction
-  const network = NETWORK === 'testnet' ? 'testnet' : 'public'
-  return `https://stellar.expert/explorer/${network}/tx/${transactionHash}`
-}
-
 export async function voteForPlant(plantId) {
   // Contract signature: vote_for_plant(plant_id: String, validator: Address)
   // El validator debe ser la cuenta conectada
