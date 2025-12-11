@@ -2,8 +2,8 @@
 
 Sistema descentralizado de registro, validación y comercio de plantas medicinales construido sobre Stellar/Soroban.
 
-**🎯 Estado:** ✅ **Transacciones Blockchain Funcionales** (10 Dic 2025)  
-**📅 Última Actualización:** 10 de Diciembre, 2025  
+**🎯 Estado:** ✅ **Transacciones Blockchain Funcionales** (11 Dic 2025)  
+**📅 Última Actualización:** 11 de Diciembre, 2025  
 **🔗 Network:** Stellar Testnet
 
 ---
@@ -58,13 +58,11 @@ npm run dev
 
 | Documento | Descripción |
 |-----------|-------------|
-| **[STATUS_ACTUAL.md](./STATUS_ACTUAL.md)** | 📊 Estado actual del proyecto (10 dic) |
-| **[PROYECTO_HERBamet_COMPLETO.md](./PROYECTO_HERBAMED_COMPLETO.md)** | 📖 Documentación Maestra Completa |
-| [TRANSACCIONES_GUIA.md](./TRANSACCIONES_GUIA.md) | 📘 Guía detallada de transacciones |
-| [QUICKSTART.md](./QUICKSTART.md) | Guía rápida de inicio |
-| [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) | Guía para desarrolladores |
-| [USER_MANUAL.md](./USER_MANUAL.md) | Manual de usuario |
-| [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md) | Casos de prueba |
+| **[ESTADO_FINAL.md](./ESTADO_FINAL.md)** | 📊 Estado actual consolidado |
+| **[RESPUESTAS_PREGUNTAS.md](./RESPUESTAS_PREGUNTAS.md)** | ❓ Respuestas a preguntas clave |
+| [TRANSACCIONES_GUIA.md](./TRANSACCIONES_GUIA.md) | 📘 Guía de transacciones (pendiente actualización) |
+| [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) | 🛠️ Guía para desarrolladores |
+| [USER_MANUAL.md](./USER_MANUAL.md) | 👤 Manual de usuario |
 
 ---
 
@@ -73,8 +71,8 @@ npm run dev
 **Blockchain**
 - Stellar Testnet
 - Soroban Smart Contracts (Rust)
-- Contract: `CA5C74SZ5XHXENOVQ454WQN66PMVSPMIZV5FYUR6OWDUQKC4PKOOXNPR`
-- RPC: https://soroban-testnet.stellar.org
+- Contract: `CCW7E6CECERISMD2FIKKYRMSUEU5F7VGPUHMTARG5PQH3IRNM4CFYJRE`
+- RPC: https://soroban-testnet.stellar.org:443
 
 **Frontend**
 - Vue 3.3.8 + Vite 7.2.2
@@ -166,23 +164,9 @@ herbamed-blockchain/
 
 ## 🧪 Testing
 
-### Verificar Registro en Blockchain
-```javascript
-// Abrir DevTools → Console
-
-// 1. Ver plantas registradas localmente
-localStorage.getItem('herbamed_plant_ids')
-// Output: ["8000","PlantID-2"]
-
-// 2. Agregar planta de prueba
-localStorage.setItem('herbamed_plant_ids', JSON.stringify(['8000']))
-
-// 3. Recargar lista
-location.reload()
-
-// 4. Ver logs de transacciones
-// Buscar en consola: [registerPlant], [getPlant], [getAllPlants]
-```
+### Verificar en Blockchain (UI)
+- Al registrar, listar o comprar, la UI muestra un `transactionHash` con un enlace directo a Stellar Expert.
+- Para consultas (`getAllPlants`, `getAllListings`, `getPlantVotes`) no se generan transacciones; son simulaciones RPC (read‑only).
 
 ### Verificar en Stellar Explorer
 ```
@@ -196,8 +180,10 @@ location.reload()
 
 ## 🚀 Roadmap
 
-### ✅ Completado
-- Registro de plantas en blockchain
+- Pendiente: Actualizar TRANSACCIONES_GUIA.md y USER_MANUAL.md tras pruebas manuales
+- Pendiente: Añadir modo opcional "dryRun" para registro/voto si se decide flujo indicativo
+- Futuro: Integrar `transfer_tokens` para mover XLM en compras
+- Futuro: Validaciones avanzadas y reputación de vendedores
 - Firma local de transacciones
 - Autenticación multi-método
 - Interfaz de usuario básica

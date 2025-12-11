@@ -135,247 +135,196 @@ export async function submitTx(txXdr) {
     
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      console.error('[submitTx] HTTP Error:', res.status, res.statusText)
-      throw new Error(`RPC HTTP ${res.status}: ${res.statusText}`)
+      throw new Error(`RPC send failed: ${res.status} ${res.statusText} ${body}`)
     }
     
-    const rpcResp = await res.json()
-    console.log('[submitTx] Respuesta RPC completa:', JSON.stringify(rpcResp, null, 2))
+    const result = await res.json()
+    console.log('[submitTx] Respuesta RPC:', result)
     
     // JSON-RPC 2.0 format: {jsonrpc, id, result} o {jsonrpc, id, error}
-    if (rpcResp.error) {
-      console.error('[submitTx] RPC Error:', rpcResp.error)
-      throw new Error(`RPC error: ${rpcResp.error.message || JSON.stringify(rpcResp.error)}`)
+    if (result.error) {
+      throw new Error(`RPC error: ${result.error.message || JSON.stringify(result.error)}`)
     }
 
-    const result = rpcResp.result || rpcResp
+    const sendResult = result.result || result
+    const txHash = sendResult?.hash
+    const status = sendResult?.status || sendResult?.result?.status
+    console.log('[submitTx] Estado inicial:', status, 'hash:', txHash)
 
-    // Soroban sendTransaction returns a status: PENDING | DUPLICATE | TRY_AGAIN_LATER | ERROR | SUCCESS
-    if (result.status && result.status !== 'PENDING' && result.status !== 'SUCCESS') {
-      console.error('[submitTx] ❌ Transaction failed')
-      console.error('[submitTx] Status:', result.status)
-      
-      if (result.errorResultXdr) {
-        console.error('[submitTx] Error XDR:', result.errorResultXdr)
-        try {
-          // Try to decode the XDR error for better diagnostics
-          const errorXdr = xdr.TransactionResult.fromXDR(result.errorResultXdr, 'base64')
-          console.error('[submitTx] Decoded error:', errorXdr)
-          console.error('[submitTx] Error code:', errorXdr.result().switch().name)
-        } catch (decodeErr) {
-          console.warn('[submitTx] Could not decode error XDR:', decodeErr.message)
+    // Si está pendiente, esperar hasta confirmar
+    if (txHash) {
+      try {
+        const final = await waitForTransaction(txHash)
+        console.log('[submitTx] Estado final:', final?.status)
+        if (final?.status && final.status.toUpperCase() !== 'SUCCESS') {
+          throw new Error(`Transaction failed with status: ${final.status}`)
         }
+        return { ...final, hash: txHash }
+      } catch (e) {
+        console.warn('[submitTx] Error esperando confirmación:', e.message)
+        // Devolver el resultado original si la espera falla
+        return sendResult
       }
-      
-      // Common Soroban errors
-      const errorMsg = result.errorResultXdr 
-        ? 'Transaction rejected by network. Check console for XDR details.'
-        : 'Transaction failed without error details'
-      
-      throw new Error(`${result.status}: ${errorMsg}`)
     }
-
-    console.log('[submitTx] ✅ Transacción enviada:', result.hash || result.status)
-
-    // Si está pendiente, intentar poll para confirmar
-    if (result.status === 'PENDING' && result.hash) {
-      console.log('[submitTx] Esperando confirmación...')
-      const confirmed = await pollTransaction(result.hash)
-      return confirmed || result
-    }
-
-    return result
+    
+    return sendResult
   } catch (e) {
-    console.error('[submitTx] ❌ Error final:', e.message)
+    console.error('[submitTx] Error:', e)
     throw e
   }
 }
 
-async function pollTransaction(hash, timeoutMs = 20000, intervalMs = 2000) {
-  const server = new rpc.Server(RPC_URL)
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
+// Poll the RPC for transaction completion
+async function waitForTransaction(hash, timeoutMs = 30000, intervalMs = 1500) {
+  const deadline = Date.now() + timeoutMs
+  let lastStatus = 'PENDING'
+  while (Date.now() < deadline) {
+    // Prefer getTransaction, fallback to getTransactionStatus
+    const payload = { jsonrpc: '2.0', id: Date.now(), method: 'getTransaction', params: { hash } }
     try {
-      const txResp = await server.getTransaction(hash)
-      if (txResp.status === 'SUCCESS') {
-        console.log('[pollTransaction] ✅ Confirmada:', hash)
-        return txResp
+      const res = await fetch(RPC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const j = await res.json().catch(() => null)
+      const r = j?.result || j
+      const status = r?.status || r?.result?.status || lastStatus
+      lastStatus = status
+      console.log('[waitForTransaction] Estado:', status)
+      if (typeof status === 'string') {
+        const s = status.toUpperCase()
+        if (s === 'SUCCESS' || s === 'ERROR' || s === 'FAILED') {
+          return r
+        }
       }
-      if (txResp.status === 'FAILED' || txResp.status === 'ERROR') {
-        throw new Error(`Transaction failed: ${txResp.resultXdr || txResp.status}`)
-      }
-      // PENDING o NOT_FOUND, esperar
-      await new Promise(r => setTimeout(r, intervalMs))
-    } catch (err) {
-      console.warn('[pollTransaction] Estado no confirmado aún:', err.message || err)
-      await new Promise(r => setTimeout(r, intervalMs))
+    } catch (e) {
+      // Fallback method name
+      try {
+        const payload2 = { jsonrpc: '2.0', id: Date.now(), method: 'getTransactionStatus', params: { hash } }
+        const res2 = await fetch(RPC_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload2) })
+        const j2 = await res2.json().catch(() => null)
+        const r2 = j2?.result || j2
+        const status2 = r2?.status || r2?.result?.status || lastStatus
+        lastStatus = status2
+        console.log('[waitForTransaction] Estado (fallback):', status2)
+        if (typeof status2 === 'string') {
+          const s2 = status2.toUpperCase()
+          if (s2 === 'SUCCESS' || s2 === 'ERROR' || s2 === 'FAILED') {
+            return r2
+          }
+        }
+      } catch (_) {}
     }
+    await new Promise(r => setTimeout(r, intervalMs))
   }
-  console.warn('[pollTransaction] Timeout esperando confirmación de', hash)
-  return null
+  throw new Error(`Timeout esperando transacción: ${hash}, último estado: ${lastStatus}`)
 }
 
 // Helper to convert JS values to Soroban scVal types
 function toScVal(value) {
-  try {
-    // Si ya es un ScVal, devolverlo directamente
-    if (value && value._attributes) {
-      return value
-    }
-    
-    // Manejar null/undefined
-    if (value === null || value === undefined) {
-      return nativeToScVal(null)
-    }
-    
-    // Manejar strings (incluyendo addresses)
-    if (typeof value === 'string') {
-      // Check if it's an address (starts with G o C de Stellar)
-      if ((value.startsWith('G') || value.startsWith('C')) && value.length === 56) {
-        try {
-          return new Address(value).toScVal()
-        } catch (e) {
-          console.warn('[toScVal] Address parsing failed, treating as string')
-          return nativeToScVal(value, { type: 'string' })
-        }
-      }
-      // String normal
-      return nativeToScVal(value, { type: 'string' })
-    }
-    
-    // Manejar números
-    if (typeof value === 'number') {
-      return nativeToScVal(BigInt(Math.floor(value)), { type: 'i128' })
-    }
-    
-    if (typeof value === 'bigint') {
-      return nativeToScVal(value, { type: 'i128' })
-    }
-    
-    // Manejar booleanos
-    if (typeof value === 'boolean') {
-      return nativeToScVal(value)
-    }
-    
-    // Manejar arrays
-    if (Array.isArray(value)) {
-      const scVals = value.map(v => toScVal(v))
-      return xdr.ScVal.scvVec(scVals)
-    }
-    
-    // Fallback
-    console.warn('[toScVal] Tipo desconocido, intentando nativeToScVal')
-    return nativeToScVal(value)
-  } catch (e) {
-    console.error('[toScVal] Error converting value:', typeof value, '→', e.message)
-    throw new Error(`Failed to convert to ScVal: ${e.message}`)
+  // Si ya es un ScVal, devolverlo directamente
+  if (value && value._attributes) {
+    return value
   }
+  
+  // Manejar strings (incluyendo addresses)
+  if (typeof value === 'string') {
+    // Check if it's an address (starts with G or C)
+    if (value.startsWith('G') || value.startsWith('C')) {
+      try {
+        return new Address(value).toScVal()
+      } catch (e) {
+        // If not a valid address, treat as string
+        return nativeToScVal(value, { type: 'string' })
+      }
+    }
+    // String normal - usar nativeToScVal que NO requiere Buffer
+    return nativeToScVal(value, { type: 'string' })
+  }
+  
+  // Manejar números
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return nativeToScVal(value, { type: 'i128' })
+  }
+  
+  // Manejar booleanos
+  if (typeof value === 'boolean') {
+    return nativeToScVal(value)
+  }
+  
+  // Manejar arrays
+  if (Array.isArray(value)) {
+    const scVals = value.map(v => toScVal(v))
+    return xdr.ScVal.scvVec(scVals)
+  }
+  
+  throw new Error(`Unsupported type for value: ${typeof value}, value: ${value}`)
 }
 
 // Build transaction locally using Stellar SDK
-// Build transaction locally using Stellar SDK
 async function buildTransactionLocally(operation, sourcePublicKey) {
   try {
-    console.log('[buildTx] Iniciando construcción de transacción')
-    console.log('[buildTx] Método:', operation.method)
-    console.log('[buildTx] Args:', operation.args)
+    console.log('[buildTransactionLocally] Construyendo transacción para:', operation.method)
+    console.log('[buildTransactionLocally] Args:', operation.args)
     
     const contractAddress = operation.contractId || CONTRACT_ADDRESS
     
     // Verificar que rpc existe
     if (!rpc || !rpc.Server) {
-      throw new Error('rpc.Server no disponible')
+      throw new Error('rpc.Server no está disponible en el SDK')
     }
     
     const server = new rpc.Server(RPC_URL)
+    console.log('[buildTransactionLocally] Servidor RPC creado:', RPC_URL)
     
     // Get source account
-    console.log('[buildTx] Obteniendo cuenta:', sourcePublicKey)
     const sourceAccount = await server.getAccount(sourcePublicKey)
-    console.log('[buildTx] ✅ Cuenta obtenida, seq:', sourceAccount.sequenceNumber())
+    console.log('[buildTransactionLocally] Cuenta obtenida:', sourcePublicKey)
     
     // Convert args to ScVal
-    console.log('[buildTx] Convirtiendo', (operation.args || []).length, 'argumentos')
-    const scArgs = []
-    for (let i = 0; i < (operation.args || []).length; i++) {
-      const arg = operation.args[i]
-      try {
-        const scVal = toScVal(arg)
-        scArgs.push(scVal)
-        console.log(`[buildTx] ✅ Arg ${i}: tipo ${typeof arg} → ScVal`)
-      } catch (e) {
-        console.error(`[buildTx] ❌ Error en arg ${i}:`, e.message)
-        throw e
-      }
-    }
+    const scArgs = (operation.args || []).map(arg => {
+      const scVal = toScVal(arg)
+      console.log('[buildTransactionLocally] Arg convertido:', arg, '→', scVal)
+      return scVal
+    })
     
     // Create contract
     const contract = new Contract(contractAddress)
+    console.log('[buildTransactionLocally] Contrato creado:', contractAddress)
     
     // Build the operation
     let contractOperation
     if (operation.method) {
       contractOperation = contract.call(operation.method, ...scArgs)
     } else {
-      throw new Error('Method name required')
+      throw new Error('Method name is required')
     }
     
-    console.log('[buildTx] ✅ Operación creada:', operation.method)
-    
     // Build transaction
-    // IMPORTANT: Use a high fee for Soroban - BASE_FEE is too low
-    // The simulation will adjust this, but we need a reasonable starting point
     const txBuilder = new TransactionBuilder(sourceAccount, {
-      fee: (parseInt(stellar.BASE_FEE) * 100000).toString(), // ~10 XLM max fee
+      fee: stellar.BASE_FEE,
       networkPassphrase
     })
       .addOperation(contractOperation)
       .setTimeout(30)
     
     let transaction = txBuilder.build()
-    console.log('[buildTx] ✅ Transacción construida con fee inicial')
+    console.log('[buildTransactionLocally] Transacción construida, simulando...')
     
     // Simulate to get the correct resource fees
-    console.log('[buildTx] Iniciando simulación...')
+    console.log('[buildTransactionLocally] Simulando transacción...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[buildTx] ❌ Simulación fallida')
-      console.error('[buildTx] Error:', simulateResponse.error?.message || simulateResponse.error)
-      throw new Error(`Simulation failed: ${simulateResponse.error?.message || 'unknown'}`)
+      console.error('[buildTransactionLocally] Simulation error:', simulateResponse)
+      throw new Error(`Simulation failed: ${simulateResponse.error}`)
     }
     
-    console.log('[buildTx] ✅ Simulación exitosa')
-    console.log('[buildTx] Simulation result:', JSON.stringify({
-      transactionData: simulateResponse.transactionData ? 'present' : 'missing',
-      minResourceFee: simulateResponse.minResourceFee,
-      cost: simulateResponse.cost
-    }))
+    // Prepare the transaction with simulation results
+    transaction = rpc.assembleTransaction(transaction, simulateResponse).build()
     
-    // CRITICAL: Prepare the transaction with simulation results
-    // This adds SorobanTransactionData (footprint + resources) which is REQUIRED
-    if (!simulateResponse.transactionData) {
-      console.error('[buildTx] ❌ No transactionData in simulation response!')
-      throw new Error('Simulation did not return transactionData - cannot proceed')
-    }
-    
-    try {
-      // assembleTransaction adds the SorobanTransactionData to the transaction
-      const assembledTx = rpc.assembleTransaction(transaction, simulateResponse)
-      transaction = assembledTx.build()
-      console.log('[buildTx] ✅ Transacción asamblada con SorobanTransactionData')
-    } catch (assembleError) {
-      console.error('[buildTx] ❌ Assembly failed:', assembleError.message)
-      console.error('[buildTx] This means the transaction WILL FAIL - aborting')
-      throw new Error(`Assembly failed: ${assembleError.message}`)
-    }
-    
-    const xdr = transaction.toXDR()
-    console.log('[buildTx] ✅ XDR generado con longitud:', xdr.length)
-    return xdr
+    console.log('[buildTransactionLocally] Transacción construida exitosamente')
+    return transaction.toXDR()
     
   } catch (error) {
-    console.error('[buildTx] ❌ Error fatal:', error.message)
+    console.error('[buildTransactionLocally] Error:', error)
     throw error
   }
 }
@@ -451,20 +400,29 @@ export async function registerPlant(plantData) {
   const id = plant.id || `PLANT-${Date.now()}`
   const name = plant.name || ''
   const scientificName = plant.scientificName || plant.scientific_name || ''
-  // Filter out empty properties
-  const properties = Array.isArray(plant.properties) 
-    ? plant.properties.filter(p => p && p.trim().length > 0)
-    : []
+  const properties = Array.isArray(plant.properties) ? plant.properties : []
   
-  console.log('[registerPlant] Datos a enviar:', { id, name, scientificName, properties })
+  console.log('[registerPlant] Enviando:', { id, name, scientificName, properties })
   
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'register_plant', 
     args: [id, name, scientificName, properties] 
   })
-  
-  return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
+  const status = (resp?.status || '').toUpperCase()
+  const success = status === 'SUCCESS' || (!status && !!resp?.hash)
+  return { success, plantId: id, transactionHash: resp?.hash || 'pending' }
+}
+
+export async function initContract() {
+  // Inicializa el contrato (por ejemplo, lista de validadores vacía)
+  console.log('[initContract] Ejecutando init del contrato...')
+  const resp = await submitOperation({
+    contractId: CONTRACT_ADDRESS,
+    method: 'init',
+    args: []
+  })
+  return { success: true, transactionHash: resp?.hash || 'pending' }
 }
 
 export async function getAllPlants() {
@@ -497,6 +455,23 @@ export async function getAllPlants() {
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
       console.error('[getAllPlants] Error en simulación:', simulateResponse)
+      // Intentar inicializar el contrato si falta estado
+      try {
+        const msg = String(simulateResponse?.error || '')
+        if (msg.includes('MissingValue')) {
+          console.warn('[getAllPlants] MissingValue detectado, ejecutando init y reintentando...')
+          await initContract()
+          const retrySim = await server.simulateTransaction(transaction)
+          if (rpc.Api.isSimulationError(retrySim)) {
+            console.error('[getAllPlants] Error tras init:', retrySim)
+            return []
+          }
+          // Usar retrySim como respuesta
+          if (!retrySim.result || !retrySim.result.retval) return []
+          const plantsRetry = scValToNative(retrySim.result.retval)
+          return Array.isArray(plantsRetry) ? plantsRetry : []
+        }
+      } catch (_) {}
       return []
     }
     
@@ -655,6 +630,21 @@ export async function getAllListings() {
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
       console.error('[getAllListings] Error:', simulateResponse)
+      try {
+        const msg = String(simulateResponse?.error || '')
+        if (msg.includes('MissingValue')) {
+          console.warn('[getAllListings] MissingValue detectado, ejecutando init y reintentando...')
+          await initContract()
+          const retrySim = await server.simulateTransaction(transaction)
+          if (rpc.Api.isSimulationError(retrySim)) {
+            console.error('[getAllListings] Error tras init:', retrySim)
+            return []
+          }
+          if (!retrySim.result || !retrySim.result.retval) return []
+          const listingsRetry = scValToNative(retrySim.result.retval)
+          return Array.isArray(listingsRetry) ? listingsRetry : []
+        }
+      } catch (_) {}
       return []
     }
     
@@ -726,7 +716,7 @@ export async function getPlantVotes(plantId) {
   }
 }
 
-export function getStellarExplorerLink(transactionHash) {
+export async function getStellarExplorerLink(transactionHash) {
   // Generate Stellar Explorer link for transaction
   const network = NETWORK === 'testnet' ? 'testnet' : 'public'
   return `https://stellar.expert/explorer/${network}/tx/${transactionHash}`
@@ -874,8 +864,10 @@ export async function listForSale(plantId, price) {
   const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
   if (!publicKey) throw new Error('No hay cuenta conectada para listar planta')
   
-  const priceNum = parseInt(price, 10)
-  if (isNaN(priceNum) || priceNum <= 0) throw new Error('Precio inválido')
+  // Permitir precios decimales convirtiendo a enteros de mínima unidad (2 decimales)
+  const priceFloat = typeof price === 'number' ? price : parseFloat(String(price))
+  if (isNaN(priceFloat) || priceFloat <= 0) throw new Error('Precio inválido')
+  const priceNum = Math.round(priceFloat * 100) // usar 2 decimales como unidades mínimas
   
   console.log('[listForSale] Listando planta:', plantId, 'precio:', priceNum, 'vendedor:', publicKey)
   
@@ -905,15 +897,55 @@ export async function buyListing(plantId) {
 }
 
 export async function getListing(plantId) {
-  // Query contract for listing details
-  // Contract signature: get_listing implícito via DataKey::Listing
+  // Consulta un listing específico usando la función get_listing del contrato
   try {
     console.log('[getListing] Consultando listing:', plantId)
-    // Por ahora retorna estructura básica - TODO: implementar query real
-    return { plantId, available: false, price: null, seller: null }
+
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
+
+    const account = await server.getAccount(publicKey)
+    const args = [nativeToScVal(plantId, { type: 'string' })]
+    const contractOperation = contract.call('get_listing', ...args)
+
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getListing] Error:', simulateResponse)
+      // Si es MissingValue, no existe listing para esa planta
+      const msg = String(simulateResponse?.error || '')
+      if (msg.includes('MissingValue')) return null
+      return null
+    }
+
+    if (!simulateResponse.result || !simulateResponse.result.retval) {
+      return null
+    }
+
+    try {
+      const listing = scValToNative(simulateResponse.result.retval)
+      console.log('[getListing] Listing obtenido:', listing)
+      return listing
+    } catch (e) {
+      console.error('[getListing] Error al convertir:', e)
+      return null
+    }
   } catch (e) {
     console.error('[getListing] Error:', e)
-    return { plantId, available: false, price: null, seller: null }
+    return null
   }
 }
 
@@ -941,14 +973,15 @@ export default {
   connectWallet,
   submitTx,
   submitOperation,
+  initContract,
   registerPlant,
   getAllPlants,
+  getAllListings,
   getPlant,
   voteForPlant,
   listForSale,
   buyListing,
   getListing,
-  getAllListings,
   getPlantVotes,
   getStellarExplorerLink,
   isValidator,

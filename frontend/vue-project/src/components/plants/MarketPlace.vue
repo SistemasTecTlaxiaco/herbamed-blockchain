@@ -46,14 +46,14 @@
             </h6>
             <div class="card-text flex-grow-1">
               <p><small class="text-muted">ID: {{ listing.plant_id }}</small></p>
-              <div v-if="listing.plantInfo?.properties" class="mb-2">
+              <p v-if="listing.plantInfo?.properties" class="mb-2">
                 <strong>Propiedades:</strong>
-                <ul class="mb-0">
+                <ul>
                   <li v-for="(prop, idx) in listing.plantInfo.properties.slice(0, 3)" :key="idx">
                     {{ prop }}
                   </li>
                 </ul>
-              </div>
+              </p>
               <p><strong>Vendedor:</strong> {{ formatAddress(listing.seller) }}</p>
             </div>
             <div class="mt-auto">
@@ -105,9 +105,9 @@
         <button 
           class="btn btn-success w-100 mt-3" 
           @click="createListing"
-          :disabled="creatingListing || !newListing.plantId || !newListing.price"
+          :disabled="listing || !newListing.plantId || !newListing.price"
         >
-          {{ creatingListing ? '⏳ Creando listing...' : '📦 Poner en venta' }}
+          {{ listing ? '⏳ Creando listing...' : '📦 Poner en venta' }}
         </button>
       </div>
     </div>
@@ -138,7 +138,7 @@ export default {
   setup() {
     const listings = ref([])
     const buying = ref(null)
-    const creatingListing = ref(false)
+    const listing = ref(false)
     const searching = ref(false)
     const searchId = ref('')
     const newListing = ref({ plantId: '', price: 0 })
@@ -235,7 +235,7 @@ export default {
     
     const createListing = async () => {
       try {
-        creatingListing.value = true
+        listing.value = true
         status.value = null
         
         console.log('[MarketPlace] Creando listing:', newListing.value)
@@ -259,7 +259,7 @@ export default {
           message: `❌ Error al crear listing: ${error.message}`
         }
       } finally {
-        creatingListing.value = false
+        listing.value = false
       }
     }
     
@@ -303,7 +303,7 @@ export default {
     return {
       listings,
       buying,
-      creatingListing,
+      listing,
       searching,
       searchId,
       newListing,
