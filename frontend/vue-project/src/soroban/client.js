@@ -154,10 +154,25 @@ export async function submitTx(txXdr) {
     if (result.status && result.status !== 'PENDING' && result.status !== 'SUCCESS') {
       console.error('[submitTx] ❌ Transaction failed')
       console.error('[submitTx] Status:', result.status)
+      
       if (result.errorResultXdr) {
         console.error('[submitTx] Error XDR:', result.errorResultXdr)
+        try {
+          // Try to decode the XDR error for better diagnostics
+          const errorXdr = xdr.TransactionResult.fromXDR(result.errorResultXdr, 'base64')
+          console.error('[submitTx] Decoded error:', errorXdr)
+          console.error('[submitTx] Error code:', errorXdr.result().switch().name)
+        } catch (decodeErr) {
+          console.warn('[submitTx] Could not decode error XDR:', decodeErr.message)
+        }
       }
-      throw new Error(`sendTransaction ${result.status}`)
+      
+      // Common Soroban errors
+      const errorMsg = result.errorResultXdr 
+        ? 'Transaction rejected by network. Check console for XDR details.'
+        : 'Transaction failed without error details'
+      
+      throw new Error(`${result.status}: ${errorMsg}`)
     }
 
     console.log('[submitTx] ✅ Transacción enviada:', result.hash || result.status)
@@ -308,15 +323,17 @@ async function buildTransactionLocally(operation, sourcePublicKey) {
     console.log('[buildTx] ✅ Operación creada:', operation.method)
     
     // Build transaction
+    // IMPORTANT: Use a high fee for Soroban - BASE_FEE is too low
+    // The simulation will adjust this, but we need a reasonable starting point
     const txBuilder = new TransactionBuilder(sourceAccount, {
-      fee: stellar.BASE_FEE,
+      fee: (parseInt(stellar.BASE_FEE) * 100000).toString(), // ~10 XLM max fee
       networkPassphrase
     })
       .addOperation(contractOperation)
       .setTimeout(30)
     
     let transaction = txBuilder.build()
-    console.log('[buildTx] ✅ Transacción construida')
+    console.log('[buildTx] ✅ Transacción construida con fee inicial')
     
     // Simulate to get the correct resource fees
     console.log('[buildTx] Iniciando simulación...')
@@ -329,17 +346,32 @@ async function buildTransactionLocally(operation, sourcePublicKey) {
     }
     
     console.log('[buildTx] ✅ Simulación exitosa')
+    console.log('[buildTx] Simulation result:', JSON.stringify({
+      transactionData: simulateResponse.transactionData ? 'present' : 'missing',
+      minResourceFee: simulateResponse.minResourceFee,
+      cost: simulateResponse.cost
+    }))
     
-    // Prepare the transaction with simulation results
+    // CRITICAL: Prepare the transaction with simulation results
+    // This adds SorobanTransactionData (footprint + resources) which is REQUIRED
+    if (!simulateResponse.transactionData) {
+      console.error('[buildTx] ❌ No transactionData in simulation response!')
+      throw new Error('Simulation did not return transactionData - cannot proceed')
+    }
+    
     try {
-      transaction = rpc.assembleTransaction(transaction, simulateResponse).build()
-      console.log('[buildTx] ✅ Transacción asamblada')
+      // assembleTransaction adds the SorobanTransactionData to the transaction
+      const assembledTx = rpc.assembleTransaction(transaction, simulateResponse)
+      transaction = assembledTx.build()
+      console.log('[buildTx] ✅ Transacción asamblada con SorobanTransactionData')
     } catch (assembleError) {
-      console.warn('[buildTx] ⚠️ Assembly error, continuando sin recursos:', assembleError.message)
+      console.error('[buildTx] ❌ Assembly failed:', assembleError.message)
+      console.error('[buildTx] This means the transaction WILL FAIL - aborting')
+      throw new Error(`Assembly failed: ${assembleError.message}`)
     }
     
     const xdr = transaction.toXDR()
-    console.log('[buildTx] ✅ XDR generado')
+    console.log('[buildTx] ✅ XDR generado con longitud:', xdr.length)
     return xdr
     
   } catch (error) {
