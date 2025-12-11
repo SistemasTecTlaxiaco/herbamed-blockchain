@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd frontend/vue-project && npm install && npm run build",
+  "buildCommand": "npm install --prefix frontend/vue-project && npm run build --prefix frontend/vue-project",
   "outputDirectory": "frontend/vue-project/dist",
   "cleanUrls": true,
   "trailingSlash": false,
