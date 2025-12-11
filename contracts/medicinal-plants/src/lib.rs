@@ -27,10 +27,12 @@ pub struct Listing {
 #[contracttype]
 pub enum DataKey {
     Plant(String),
+    PlantIds,              // NEW: Vec<String> of all plant IDs
     Validators,
     PlantVotes(String),
     Voted(String, Address), // (plant_id, validator)
     Listing(String),       // keyed by plant_id
+    ListingIds,            // NEW: Vec<String> of all listing IDs
 }
 
 #[contract]
@@ -73,6 +75,17 @@ impl MedicinalPlantsContract {
         };
 
         env.storage().instance().set(&DataKey::Plant(id.clone()), &plant);
+        
+        // Add ID to global plant IDs list
+        let mut plant_ids: Vec<String> = env.storage()
+            .instance()
+            .get(&DataKey::PlantIds)
+            .unwrap_or_else(|| vec![&env]);
+        if !plant_ids.contains(&id) {
+            plant_ids.push_back(id.clone());
+            env.storage().instance().set(&DataKey::PlantIds, &plant_ids);
+        }
+        
         id
     }
 
@@ -135,6 +148,38 @@ impl MedicinalPlantsContract {
         env.storage().instance().get(&DataKey::Plant(id))
     }
 
+    /// Get all registered plants
+    pub fn get_all_plants(env: &Env) -> Vec<MedicinalPlant> {
+        let plant_ids: Vec<String> = env.storage()
+            .instance()
+            .get(&DataKey::PlantIds)
+            .unwrap_or_else(|| vec![&env]);
+        
+        let mut plants = vec![&env];
+        for id in plant_ids.iter() {
+            if let Some(plant) = env.storage().instance().get::<_, MedicinalPlant>(&DataKey::Plant(id.clone())) {
+                plants.push_back(plant);
+            }
+        }
+        plants
+    }
+
+    /// Get votes for a specific plant (read-only query)
+    pub fn get_plant_votes(env: &Env, plant_id: String) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::PlantVotes(plant_id))
+            .unwrap_or(0i128)
+    }
+
+    /// Get all validators
+    pub fn get_validators(env: &Env) -> Vec<Address> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Validators)
+            .unwrap_or_else(|| vec![&env])
+    }
+
     /// Marketplace: list a plant for sale (simple listing)
     pub fn list_for_sale(env: &Env, plant_id: String, seller: Address, price: i128) {
     // Authorization is handled by the contract macro
@@ -145,7 +190,40 @@ impl MedicinalPlantsContract {
             price,
             available: true,
         };
-        env.storage().instance().set(&DataKey::Listing(plant_id), &listing);
+        env.storage().instance().set(&DataKey::Listing(plant_id.clone()), &listing);
+        
+        // Add plant_id to global listing IDs list
+        let mut listing_ids: Vec<String> = env.storage()
+            .instance()
+            .get(&DataKey::ListingIds)
+            .unwrap_or_else(|| vec![&env]);
+        if !listing_ids.contains(&plant_id) {
+            listing_ids.push_back(plant_id.clone());
+            env.storage().instance().set(&DataKey::ListingIds, &listing_ids);
+        }
+    }
+
+    /// Get all active listings
+    pub fn get_all_listings(env: &Env) -> Vec<Listing> {
+        let listing_ids: Vec<String> = env.storage()
+            .instance()
+            .get(&DataKey::ListingIds)
+            .unwrap_or_else(|| vec![&env]);
+        
+        let mut listings = vec![&env];
+        for id in listing_ids.iter() {
+            if let Some(listing) = env.storage().instance().get::<_, Listing>(&DataKey::Listing(id.clone())) {
+                if listing.available {  // Only active listings
+                    listings.push_back(listing);
+                }
+            }
+        }
+        listings
+    }
+
+    /// Get a specific listing
+    pub fn get_listing(env: &Env, plant_id: String) -> Option<Listing> {
+        env.storage().instance().get(&DataKey::Listing(plant_id))
     }
 
     /// Transfer tokens between two addresses (placeholder implementation)
