@@ -1,7 +1,7 @@
 {
-  "buildCommand": "npm install --prefix=frontend/vue-project && npm run build --prefix=frontend/vue-project",
-  "outputDirectory": "frontend/vue-project/dist",
-  "devCommand": "npm run dev --prefix=frontend/vue-project",
+  "buildCommand": "npm install && npm run build",
+  "outputDirectory": "dist",
+  "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "vite",
   "cleanUrls": true,
