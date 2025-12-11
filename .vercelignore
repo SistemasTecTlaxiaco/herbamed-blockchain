@@ -1,0 +1,14 @@
+node_modules/
+target/
+.git/
+.env.local
+.env.*.local
+contracts/test_snapshots/
+*.rs
+Cargo.lock
+README.md
+DEVELOPER_GUIDE.md
+USER_MANUAL.md
+ROADMAP.md
+RESPUESTAS_PREGUNTAS.md
+ESTADO_FINAL.md
