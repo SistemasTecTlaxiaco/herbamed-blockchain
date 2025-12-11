@@ -1,15 +1,16 @@
 {
-  "buildCommand": "npm install && npm run build",
-  "outputDirectory": "dist",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install",
+  "version": 2,
+  "public": false,
+  "buildCommand": "cd frontend/vue-project && npm install && npm run build",
+  "outputDirectory": "frontend/vue-project/dist",
   "framework": "vite",
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [
+  "env": {
+    "VITE_APP_TITLE": "Herbamed Blockchain"
+  },
+  "routes": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
