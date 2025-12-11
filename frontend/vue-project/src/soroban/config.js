@@ -4,7 +4,7 @@
 // Make this file safe to import under plain Node (tests) by falling back from import.meta.env
 const _env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : (typeof process !== 'undefined' ? process.env : {})
 
-export const CONTRACT_ADDRESS = _env.VITE_CONTRACT_ADDRESS || _env.VUE_APP_CONTRACT_ADDRESS || 'CAYK2RGWECFRSSNNLMFMZSKAEMF6Q7IHB6BOIJWI6773AE6RKER5JCUB'
+export const CONTRACT_ADDRESS = _env.VITE_CONTRACT_ADDRESS || _env.VUE_APP_CONTRACT_ADDRESS || 'CCW7E6CECERISMD2FIKKYRMSUEU5F7VGPUHMTARG5PQH3IRNM4CFYJRE'
 export const NETWORK = _env.VITE_SOROBAN_NETWORK || _env.VUE_APP_SOROBAN_NETWORK || 'testnet'
 export const RPC_URL = _env.VITE_SOROBAN_RPC_URL || _env.VUE_APP_SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org:443'
 
