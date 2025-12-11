@@ -417,12 +417,24 @@ export async function registerPlant(plantData) {
 export async function initContract() {
   // Inicializa el contrato (por ejemplo, lista de validadores vacía)
   console.log('[initContract] Ejecutando init del contrato...')
-  const resp = await submitOperation({
-    contractId: CONTRACT_ADDRESS,
-    method: 'init',
-    args: []
-  })
-  return { success: true, transactionHash: resp?.hash || 'pending' }
+  try {
+    const resp = await submitOperation({
+      contractId: CONTRACT_ADDRESS,
+      method: 'init',
+      args: []
+    })
+    console.log('[initContract] ✅ Contrato inicializado')
+    return { success: true, transactionHash: resp?.hash || 'pending' }
+  } catch (error) {
+    console.error('[initContract] Error al inicializar:', error)
+    throw error
+  }
+}
+
+// Helper to get Stellar Expert link
+export function getStellarExplorerLink(txHash) {
+  const network = NETWORK === 'testnet' ? 'testnet' : 'public'
+  return `https://stellar.expert/explorer/${network}/tx/${txHash}`
 }
 
 export async function getAllPlants() {
@@ -456,22 +468,56 @@ export async function getAllPlants() {
     if (rpc.Api.isSimulationError(simulateResponse)) {
       console.error('[getAllPlants] Error en simulación:', simulateResponse)
       // Intentar inicializar el contrato si falta estado
-      try {
-        const msg = String(simulateResponse?.error || '')
-        if (msg.includes('MissingValue')) {
-          console.warn('[getAllPlants] MissingValue detectado, ejecutando init y reintentando...')
+      const errorMsg = JSON.stringify(simulateResponse)
+      if (errorMsg.includes('MissingValue')) {
+        console.warn('[getAllPlants] MissingValue detectado, ejecutando init y reintentando...')
+        try {
           await initContract()
-          const retrySim = await server.simulateTransaction(transaction)
+          // Esperar un poco para que la transacción se confirme
+          await new Promise(r => setTimeout(r, 3000))
+          // Reintentar con nueva cuenta (refresh)
+          const newAccount = await server.getAccount(publicKey)
+          const newOp = contract.call('get_all_plants')
+          const newTx = new TransactionBuilder(newAccount, {
+            fee: stellar.BASE_FEE,
+            networkPassphrase
+          })
+            .addOperation(newOp)
+            .setTimeout(30)
+            .build()
+          const retrySim = await server.simulateTransaction(newTx)
           if (rpc.Api.isSimulationError(retrySim)) {
             console.error('[getAllPlants] Error tras init:', retrySim)
             return []
           }
-          // Usar retrySim como respuesta
+          // Procesar resultado del retry
           if (!retrySim.result || !retrySim.result.retval) return []
-          const plantsRetry = scValToNative(retrySim.result.retval)
-          return Array.isArray(plantsRetry) ? plantsRetry : []
+          const result = retrySim.result.retval
+          const normalizePlant = (p) => {
+            if (!p) return null
+            if (Array.isArray(p)) {
+              return {
+                id: p[0] || '',
+                name: p[1] || '',
+                scientific_name: p[2] || '',
+                properties: Array.isArray(p[3]) ? p[3] : [],
+                validated: Boolean(p[4]),
+                validator: p[5] || ''
+              }
+            }
+            if (typeof p === 'object') return p
+            return null
+          }
+          const plantsRetry = scValToNative(result)
+          if (Array.isArray(plantsRetry)) {
+            return plantsRetry.map(normalizePlant).filter(Boolean)
+          }
+          return []
+        } catch (initError) {
+          console.error('[getAllPlants] Error al inicializar contrato:', initError)
+          return []
         }
-      } catch (_) {}
+      }
       return []
     }
     
@@ -484,17 +530,44 @@ export async function getAllPlants() {
     
     const result = simulateResponse.result.retval
     console.log('[getAllPlants] Resultado ScVal:', JSON.stringify(result, null, 2))
-    
+
+    // Normaliza posibles formatos devueltos por scValToNative
+    const normalizePlant = (p) => {
+      if (!p) return null
+      if (Array.isArray(p)) {
+        return {
+          id: p[0] || '',
+          name: p[1] || '',
+          scientific_name: p[2] || '',
+          properties: Array.isArray(p[3]) ? p[3] : [],
+          validated: Boolean(p[4]),
+          validator: p[5] || ''
+        }
+      }
+      if (typeof p === 'object') return p
+      return null
+    }
+
     try {
       const plants = scValToNative(result)
-      console.log('[getAllPlants] Plantas convertidas:', plants)
-      
-      if (Array.isArray(plants)) {
-        console.log('[getAllPlants] Plantas cargadas:', plants.length)
-        return plants
+      console.log('[getAllPlants] Plantas convertidas (scValToNative):', plants)
+
+      if (Array.isArray(plants) && plants.length > 0) {
+        const normalized = plants.map(normalizePlant).filter(Boolean)
+        console.log('[getAllPlants] Plantas cargadas:', normalized.length)
+        return normalized
       }
-      
-      console.warn('[getAllPlants] Resultado no es array:', typeof plants)
+
+      // Fallback: decodificar manualmente cada elemento del vector
+      const rawVec = result?._attributes?.vec || []
+      if (rawVec.length) {
+        const decoded = rawVec.map((scv) => scValToNative(scv))
+        const normalized = decoded.map(normalizePlant).filter(Boolean)
+        console.log('[getAllPlants] Plantas cargadas (fallback):', normalized.length)
+        return normalized
+      }
+
+      console.warn('[getAllPlants] Resultado vacío o no convertible')
       return []
     } catch (convertError) {
       console.error('[getAllPlants] Error al convertir ScVal:', convertError)
@@ -555,24 +628,11 @@ export async function getPlant(plantId) {
     
     const result = simulateResponse.result.retval
     console.log('[getPlant] Resultado ScVal:', JSON.stringify(result, null, 2))
-    
-    // El contrato retorna Option<MedicinalPlant>
-    // Option es: None (0) o Some(T) (1 + struct)
-    try {
-      const plant = scValToNative(result)
-      console.log('[getPlant] Planta convertida:', plant)
-      
-      // Si es null/undefined, significa Option::None
-      if (plant === null || plant === undefined) {
-        console.log('[getPlant] Planta no encontrada (Option::None)')
-        return null
-      }
-      
-      // Si es array, podría ser Some(struct) - los structs a veces se devuelven como arrays
+
+    const normalizePlant = (plant) => {
+      if (plant === null || plant === undefined) return null
       if (Array.isArray(plant)) {
-        console.log('[getPlant] Planta es array, convirtiendo...')
-        // Intentar convertir array en objeto
-        const converted = {
+        return {
           id: plant[0] || '',
           name: plant[1] || '',
           scientific_name: plant[2] || '',
@@ -580,18 +640,22 @@ export async function getPlant(plantId) {
           validated: Boolean(plant[4]),
           validator: plant[5] || ''
         }
-        console.log('[getPlant] Planta encontrada:', converted)
-        return converted
       }
-      
-      // Si es objeto directo
-      if (typeof plant === 'object' && plant !== null) {
-        console.log('[getPlant] Planta encontrada:', plant)
-        return plant
-      }
-      
-      console.warn('[getPlant] Formato de resultado inesperado:', typeof plant)
+      if (typeof plant === 'object' && plant !== null) return plant
       return null
+    }
+
+    // El contrato retorna Option<MedicinalPlant>
+    try {
+      const plant = scValToNative(result)
+      console.log('[getPlant] Planta convertida:', plant)
+      const normalized = normalizePlant(plant)
+      if (!normalized) {
+        console.log('[getPlant] Planta no encontrada (Option::None)')
+        return null
+      }
+      console.log('[getPlant] Planta encontrada:', normalized)
+      return normalized
     } catch (convertError) {
       console.error('[getPlant] Error al convertir ScVal:', convertError)
       return null
