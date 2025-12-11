@@ -608,7 +608,7 @@ export async function getPlantVotes(plantId) {
   }
 }
 
-export async function getStellarExplorerLink(transactionHash) {
+export function getStellarExplorerLink(transactionHash) {
   // Generate Stellar Explorer link for transaction
   const network = NETWORK === 'testnet' ? 'testnet' : 'public'
   return `https://stellar.expert/explorer/${network}/tx/${transactionHash}`
@@ -830,7 +830,9 @@ export default {
   listForSale,
   buyListing,
   getListing,
+  getAllListings,
   getPlantVotes,
+  getStellarExplorerLink,
   isValidator,
   isFreighterInstalled,
   waitForFreighterInjection,
