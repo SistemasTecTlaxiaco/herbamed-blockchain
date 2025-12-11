@@ -135,10 +135,14 @@ export default {
           scientificName: plant.value.scientificName,
           properties: plant.value.properties
         })
-        console.log('[PlantRegistration] Planta registrada:', result.plantId)
-        
+        console.log('[PlantRegistration] Planta registrada:', result.plantId, 'status:', result.status)
+
+        if (!result.success) {
+          throw new Error('La transacción no se confirmó. Intenta de nuevo en unos segundos.')
+        }
+
         // Guardar datos para mostrar el alert de éxito
-        transactionHash.value = result.transactionHash
+        transactionHash.value = result.transactionHash || 'pending'
         registeredPlantId.value = result.plantId
         
         // Limpiar formulario

@@ -175,7 +175,7 @@ export async function submitTx(txXdr) {
 }
 
 // Poll the RPC for transaction completion
-async function waitForTransaction(hash, timeoutMs = 30000, intervalMs = 1500) {
+async function waitForTransaction(hash, timeoutMs = 45000, intervalMs = 1500) {
   const deadline = Date.now() + timeoutMs
   let lastStatus = 'PENDING'
   while (Date.now() < deadline) {
@@ -410,8 +410,13 @@ export async function registerPlant(plantData) {
     args: [id, name, scientificName, properties] 
   })
   const status = (resp?.status || '').toUpperCase()
-  const success = status === 'SUCCESS' || (!status && !!resp?.hash)
-  return { success, plantId: id, transactionHash: resp?.hash || 'pending' }
+  const success = status === 'SUCCESS'
+  return {
+    success,
+    status,
+    plantId: id,
+    transactionHash: success ? resp?.hash : null
+  }
 }
 
 export async function initContract() {
