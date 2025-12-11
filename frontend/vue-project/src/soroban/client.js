@@ -346,105 +346,71 @@ export async function registerPlant(plantData) {
     args: [id, name, scientificName, properties] 
   })
   
-  // Guardar ID en localStorage para poder listar después
-  addRegisteredPlantId(id)
-  
-  // Guardar planta completa en caché local como fallback
-  const plantObject = {
-    id,
-    name,
-    scientific_name: scientificName,
-    properties,
-    validated: false,
-    validator: ''
-  }
-  savePlantToLocalCache(plantObject)
-  
   return { success: true, plantId: id, transactionHash: resp?.hash || 'pending' }
 }
 
-// LocalStorage helpers para rastrear plantas registradas (caché local)
-function getRegisteredPlantIds() {
+export async function getAllPlants() {
+  // Query contract for all registered plants using get_all_plants()
   try {
-    const ids = localStorage.getItem('herbamed_plant_ids')
-    return ids ? JSON.parse(ids) : []
+    console.log('[getAllPlants] Consultando todas las plantas desde el contrato...')
+    
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      // Use dummy keypair for read-only query
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const contractOperation = contract.call('get_all_plants')
+    
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    console.log('[getAllPlants] Simulando transacción...')
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getAllPlants] Error en simulación:', simulateResponse)
+      return []
+    }
+    
+    console.log('[getAllPlants] Simulación exitosa')
+    
+    if (!simulateResponse.result || !simulateResponse.result.retval) {
+      console.warn('[getAllPlants] Sin resultado en simulación')
+      return []
+    }
+    
+    const result = simulateResponse.result.retval
+    console.log('[getAllPlants] Resultado ScVal:', JSON.stringify(result, null, 2))
+    
+    try {
+      const plants = scValToNative(result)
+      console.log('[getAllPlants] Plantas convertidas:', plants)
+      
+      if (Array.isArray(plants)) {
+        console.log('[getAllPlants] Plantas cargadas:', plants.length)
+        return plants
+      }
+      
+      console.warn('[getAllPlants] Resultado no es array:', typeof plants)
+      return []
+    } catch (convertError) {
+      console.error('[getAllPlants] Error al convertir ScVal:', convertError)
+      return []
+    }
   } catch (e) {
-    console.error('[getRegisteredPlantIds] Error:', e)
+    console.error('[getAllPlants] Error:', e)
     return []
   }
-}
-
-function addRegisteredPlantId(plantId) {
-  try {
-    const ids = getRegisteredPlantIds()
-    if (!ids.includes(plantId)) {
-      ids.push(plantId)
-      localStorage.setItem('herbamed_plant_ids', JSON.stringify(ids))
-      console.log('[addRegisteredPlantId] Planta agregada al registro local:', plantId)
-    }
-  } catch (e) {
-    console.error('[addRegisteredPlantId] Error:', e)
-  }
-}
-
-// Guardar planta en caché local (como fallback si el contrato no persiste)
-function savePlantToLocalCache(plant) {
-  try {
-    const cacheKey = `herbamed_plant_${plant.id}`
-    localStorage.setItem(cacheKey, JSON.stringify(plant))
-    console.log('[savePlantToLocalCache] Planta guardada en caché local:', plant.id)
-  } catch (e) {
-    console.error('[savePlantToLocalCache] Error:', e)
-  }
-}
-
-// Obtener planta del caché local
-function getPlantFromLocalCache(plantId) {
-  try {
-    const cacheKey = `herbamed_plant_${plantId}`
-    const cached = localStorage.getItem(cacheKey)
-    if (cached) {
-      console.log('[getPlantFromLocalCache] Planta encontrada en caché:', plantId)
-      return JSON.parse(cached)
-    }
-  } catch (e) {
-    console.error('[getPlantFromLocalCache] Error:', e)
-  }
-  return null
-}
-
-export async function getAllPlants() {
-  // Query contract for all registered plants
-  // Como el contrato tiene problemas de persistencia en testnet, usamos caché local
-  const plantIds = getRegisteredPlantIds()
-  console.log('[getAllPlants] IDs registrados localmente:', plantIds)
-  
-  const plants = []
-  for (const id of plantIds) {
-    try {
-      // Primero intentar obtener del caché local
-      let plant = getPlantFromLocalCache(id)
-      
-      if (!plant) {
-        // Si no está en caché, intentar obtener del contrato
-        plant = await getPlant(id)
-      }
-      
-      if (plant) {
-        plants.push(plant)
-      }
-    } catch (e) {
-      console.error(`[getAllPlants] Error al cargar planta ${id}:`, e)
-      // Intenta al menos usar caché si falla el contrato
-      const cached = getPlantFromLocalCache(id)
-      if (cached) {
-        plants.push(cached)
-      }
-    }
-  }
-  
-  console.log('[getAllPlants] Plantas cargadas:', plants.length)
-  return plants
 }
 
 export async function getPlant(plantId) {
@@ -541,6 +507,111 @@ export async function getPlant(plantId) {
     console.error('[getPlant] Error:', e)
     return null
   }
+}
+
+export async function getAllListings() {
+  // Query contract for all active listings using get_all_listings()
+  try {
+    console.log('[getAllListings] Consultando todos los listings desde el contrato...')
+    
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const contractOperation = contract.call('get_all_listings')
+    
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getAllListings] Error:', simulateResponse)
+      return []
+    }
+    
+    if (!simulateResponse.result || !simulateResponse.result.retval) {
+      return []
+    }
+    
+    try {
+      const listings = scValToNative(simulateResponse.result.retval)
+      console.log('[getAllListings] Listings cargados:', Array.isArray(listings) ? listings.length : 0)
+      return Array.isArray(listings) ? listings : []
+    } catch (e) {
+      console.error('[getAllListings] Error al convertir:', e)
+      return []
+    }
+  } catch (e) {
+    console.error('[getAllListings] Error:', e)
+    return []
+  }
+}
+
+export async function getPlantVotes(plantId) {
+  // Query contract for votes of a specific plant (read-only)
+  try {
+    console.log('[getPlantVotes] Consultando votos de:', plantId)
+    
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const args = [nativeToScVal(plantId, {type: 'string'})]
+    const contractOperation = contract.call('get_plant_votes', ...args)
+    
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getPlantVotes] Error:', simulateResponse)
+      return 0
+    }
+    
+    if (!simulateResponse.result || !simulateResponse.result.retval) {
+      return 0
+    }
+    
+    try {
+      const votes = scValToNative(simulateResponse.result.retval)
+      console.log('[getPlantVotes] Votos:', votes)
+      return typeof votes === 'number' ? votes : parseInt(votes) || 0
+    } catch (e) {
+      console.error('[getPlantVotes] Error al convertir:', e)
+      return 0
+    }
+  } catch (e) {
+    console.error('[getPlantVotes] Error:', e)
+    return 0
+  }
+}
+
+export async function getStellarExplorerLink(transactionHash) {
+  // Generate Stellar Explorer link for transaction
+  const network = NETWORK === 'testnet' ? 'testnet' : 'public'
+  return `https://stellar.expert/explorer/${network}/tx/${transactionHash}`
 }
 
 export async function voteForPlant(plantId) {
