@@ -1,10 +1,14 @@
-node_modules/
-target/
-.git/
+node_modules
+target
+.git
+.gitignore
 .env.local
 .env.*.local
-contracts/test_snapshots/
+contracts
+src
+tests
 *.rs
+*.toml
 Cargo.lock
 README.md
 DEVELOPER_GUIDE.md
@@ -12,3 +16,4 @@ USER_MANUAL.md
 ROADMAP.md
 RESPUESTAS_PREGUNTAS.md
 ESTADO_FINAL.md
+.vercelignore
