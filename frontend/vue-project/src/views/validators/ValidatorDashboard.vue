@@ -96,8 +96,6 @@
 <script>
 import { onMounted, ref } from 'vue'
 import soroban from '../../soroban/client'
-import { queryPlant, queryPlantVotes } from '../../soroban/queries'
-import { getTransactionUrl } from '../../soroban/stellar-expert'
 
 export default {
   name: 'ValidatorDashboard',
@@ -117,7 +115,7 @@ export default {
         status.value = null
         
         console.log('[ValidatorDashboard] Buscando planta:', searchId.value)
-        const plant = await queryPlant(searchId.value.trim())
+        const plant = await soroban.getPlant(searchId.value.trim())
         
         if (!plant) {
           status.value = {
@@ -138,7 +136,7 @@ export default {
         }
         
         // Obtener votos actuales
-        const votes = await queryPlantVotes(plant.id)
+        const votes = await soroban.getPlantVotes(plant.id)
         plant.votes = votes
         plant.hasVoted = false
         
@@ -173,7 +171,7 @@ export default {
         status.value = {
           type: 'success',
           message: `✅ Voto registrado para ${plantId}`,
-          explorerUrl: getTransactionUrl(result.transactionHash)
+          explorerUrl: soroban.getStellarExplorerLink(result.transactionHash)
         }
         
         // Actualizar votos después de votar
@@ -200,7 +198,7 @@ export default {
         refreshing.value = plantId
         console.log('[ValidatorDashboard] Actualizando votos para:', plantId)
         
-        const votes = await queryPlantVotes(plantId)
+        const votes = await soroban.getPlantVotes(plantId)
         const plant = pendingPlants.value.find(p => p.id === plantId)
         
         if (plant) {

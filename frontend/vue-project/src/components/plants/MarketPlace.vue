@@ -27,7 +27,11 @@
       </div>
     </div>
     
-    <div v-if="listings.length === 0" class="alert alert-info">
+    <div v-if="loading" class="alert alert-info">
+      <h5>⏳ Cargando listings desde blockchain...</h5>
+    </div>
+    
+    <div v-else-if="listings.length === 0" class="alert alert-info">
       <h5>📭 No hay plantas en el marketplace</h5>
       <p class="mb-0">Usa el buscador arriba para encontrar plantas en venta.</p>
     </div>
@@ -128,8 +132,6 @@
 <script>
 import { onMounted, ref } from 'vue'
 import soroban from '../../soroban/client'
-import { queryListing, queryPlant } from '../../soroban/queries'
-import { getTransactionUrl } from '../../soroban/stellar-expert'
 
 export default {
   name: 'MarketPlace',
@@ -141,6 +143,39 @@ export default {
     const searchId = ref('')
     const newListing = ref({ plantId: '', price: 0 })
     const status = ref(null)
+    const loading = ref(false)
+    
+    // Cargar todos los listings desde el contrato
+    const loadListings = async () => {
+      try {
+        loading.value = true
+        console.log('[MarketPlace] Cargando listings desde el contrato...')
+        
+        const allListings = await soroban.getAllListings()
+        console.log('[MarketPlace] Listings obtenidos:', allListings)
+        
+        // Enriquecer con info de plantas
+        for (const listingData of allListings) {
+          try {
+            const plantInfo = await soroban.getPlant(listingData.plant_id)
+            listingData.plantInfo = plantInfo
+          } catch (error) {
+            console.warn(`[MarketPlace] No se pudo obtener info de planta ${listingData.plant_id}:`, error)
+          }
+        }
+        
+        listings.value = allListings
+        console.log('[MarketPlace] Total listings cargados:', listings.value.length)
+      } catch (error) {
+        console.error('[MarketPlace] Error al cargar listings:', error)
+        status.value = {
+          type: 'danger',
+          message: `❌ Error al cargar listings: ${error.message}`
+        }
+      } finally {
+        loading.value = false
+      }
+    }
     
     const searchListing = async () => {
       if (!searchId.value.trim()) return
@@ -150,7 +185,7 @@ export default {
         status.value = null
         
         console.log('[MarketPlace] Buscando listing:', searchId.value)
-        const listingData = await queryListing(searchId.value.trim())
+        const listingData = await soroban.getListing(searchId.value.trim())
         
         if (!listingData) {
           status.value = {
@@ -172,7 +207,7 @@ export default {
         
         // Intentar obtener info de la planta
         try {
-          const plantInfo = await queryPlant(listingData.plant_id)
+          const plantInfo = await soroban.getPlant(listingData.plant_id)
           listingData.plantInfo = plantInfo
         } catch (error) {
           console.warn('[MarketPlace] No se pudo obtener info de planta:', error)
@@ -209,26 +244,11 @@ export default {
         status.value = {
           type: 'success',
           message: `✅ Planta ${newListing.value.plantId} puesta en venta por ${newListing.value.price} XLM`,
-          explorerUrl: getTransactionUrl(result.transactionHash)
+          explorerUrl: soroban.getStellarExplorerLink(result.transactionHash)
         }
         
-        // Agregar a la lista localmente
-        const listingData = {
-          plant_id: newListing.value.plantId,
-          price: newListing.value.price,
-          available: true,
-          seller: result.seller || 'Tu dirección'
-        }
-        
-        // Intentar obtener info de planta
-        try {
-          const plantInfo = await queryPlant(newListing.value.plantId)
-          listingData.plantInfo = plantInfo
-        } catch (error) {
-          console.warn('[MarketPlace] No se pudo obtener info de planta')
-        }
-        
-        listings.value.push(listingData)
+        // Recargar listings desde el contrato
+        await loadListings()
         
         // Reset form
         newListing.value = { plantId: '', price: 0 }
@@ -254,14 +274,11 @@ export default {
         status.value = {
           type: 'success',
           message: `✅ Planta ${plantId} comprada exitosamente`,
-          explorerUrl: getTransactionUrl(result.transactionHash)
+          explorerUrl: soroban.getStellarExplorerLink(result.transactionHash)
         }
         
-        // Actualizar disponibilidad
-        const listingToUpdate = listings.value.find(l => l.plant_id === plantId)
-        if (listingToUpdate) {
-          listingToUpdate.available = false
-        }
+        // Recargar listings desde el contrato
+        await loadListings()
       } catch (error) {
         console.error('[MarketPlace] Error al comprar:', error)
         status.value = {
@@ -280,7 +297,7 @@ export default {
     
     onMounted(() => {
       console.log('[MarketPlace] Componente montado')
-      console.log('[MarketPlace] Usa el buscador para encontrar listings')
+      loadListings()
     })
     
     return {
@@ -291,6 +308,8 @@ export default {
       searchId,
       newListing,
       status,
+      loading,
+      loadListings,
       searchListing,
       createListing,
       buyListing,

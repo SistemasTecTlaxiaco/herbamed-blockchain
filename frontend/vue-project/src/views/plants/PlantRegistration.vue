@@ -1,6 +1,21 @@
 <template>
   <div class="container mt-4">
     <h2>Registro de Plantas Medicinales</h2>
+    
+    <!-- Alert de éxito con enlace a Stellar Explorer -->
+    <div v-if="transactionHash" class="alert alert-success alert-dismissible fade show" role="alert">
+      <h5 class="alert-heading">✅ Planta registrada exitosamente!</h5>
+      <p class="mb-2"><strong>ID:</strong> {{ registeredPlantId }}</p>
+      <hr>
+      <p class="mb-0">
+        <strong>Verificar transacción en Stellar Explorer:</strong><br>
+        <a :href="explorerLink" target="_blank" class="alert-link">
+          {{ transactionHash }} →
+        </a>
+      </p>
+      <button type="button" class="btn-close" @click="clearSuccess"></button>
+    </div>
+    
     <form @submit.prevent="registerPlant" class="mt-4">
       <div class="mb-3">
         <label for="plantId" class="form-label">ID de la Planta</label>
@@ -56,7 +71,7 @@
 </template>
 
 <script>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import soroban from '../../soroban/client'
 
@@ -73,6 +88,15 @@ export default {
       properties: ['']
     })
     const loading = ref(false)
+    const transactionHash = ref('')
+    const registeredPlantId = ref('')
+    
+    // Computed para generar el enlace de Stellar Explorer
+    const explorerLink = computed(() => {
+      return transactionHash.value 
+        ? soroban.getStellarExplorerLink(transactionHash.value)
+        : ''
+    })
     
     const addProperty = () => {
       plant.value.properties.push('')
@@ -80,6 +104,11 @@ export default {
     
     const removeProperty = (index) => {
       plant.value.properties.splice(index, 1)
+    }
+    
+    const clearSuccess = () => {
+      transactionHash.value = ''
+      registeredPlantId.value = ''
     }
     
     const registerPlant = async () => {
@@ -94,14 +123,23 @@ export default {
         })
         console.log('[PlantRegistration] Planta registrada:', result.plantId)
         
-        // Esperar un poco para que el localStorage se actualice
-        await new Promise(resolve => setTimeout(resolve, 500))
+        // Guardar datos para mostrar el alert de éxito
+        transactionHash.value = result.transactionHash
+        registeredPlantId.value = result.plantId
         
-        // Disparar evento para que PlantList se recargue
-        window.dispatchEvent(new Event('plant-registered'))
+        // Limpiar formulario
+        plant.value = {
+          id: '',
+          name: '',
+          scientificName: '',
+          properties: ['']
+        }
         
-        console.log('[PlantRegistration] Navegando a /plants')
-        router.push('/plants')
+        // Auto-scroll al alert de éxito
+        setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }, 100)
+        
       } catch (error) {
         console.error('[PlantRegistration] Error al registrar planta:', error)
         alert('Error al registrar la planta: ' + error.message)
@@ -120,15 +158,20 @@ export default {
           scientificName: '',
           properties: ['']
         }
+        clearSuccess()
       }
     })
     
     return {
       plant,
       loading,
+      transactionHash,
+      registeredPlantId,
+      explorerLink,
       addProperty,
       removeProperty,
-      registerPlant
+      registerPlant,
+      clearSuccess
     }
   }
 }
