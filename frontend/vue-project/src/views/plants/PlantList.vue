@@ -138,7 +138,6 @@
 <script>
 import { onMounted, ref, computed } from 'vue'
 import soroban from '../../soroban/client'
-import { queryPlant, queryPlantVotes } from '../../soroban/queries'
 
 export default {
   name: 'PlantList',
@@ -239,7 +238,7 @@ export default {
         status.value = null
         
         console.log('[PlantList] Buscando planta:', searchId.value)
-        const plant = await queryPlant(searchId.value.trim())
+        const plant = await soroban.getPlant(searchId.value.trim())
         
         if (!plant) {
           status.value = {
@@ -260,7 +259,7 @@ export default {
         }
         
         // Obtener votos
-        const votes = await queryPlantVotes(plant.id)
+        const votes = await soroban.getPlantVotes(plant.id)
         plant.votes = votes
         
         plants.value.push(plant)
@@ -295,9 +294,9 @@ export default {
       
       for (const id of sessionPlants) {
         try {
-          const plant = await queryPlant(id)
+          const plant = await soroban.getPlant(id)
           if (plant) {
-            const votes = await queryPlantVotes(id)
+            const votes = await soroban.getPlantVotes(id)
             plant.votes = votes
             plants.value.push(plant)
           }
