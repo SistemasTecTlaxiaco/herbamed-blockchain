@@ -799,19 +799,6 @@ export async function getListing(plantId) {
   }
 }
 
-export async function getPlantVotes(plantId) {
-  // Query contract for vote count
-  // El contrato almacena votos en DataKey::PlantVotes(plant_id)
-  try {
-    console.log('[getPlantVotes] Consultando votos:', plantId)
-    // Por ahora retorna 0 - TODO: implementar query real con RPC
-    return 0
-  } catch (e) {
-    console.error('[getPlantVotes] Error:', e)
-    return 0
-  }
-}
-
 export async function isValidator(address) {
   // Query contract to check if address is validator
   // Contract signature: is_validator(validator: Address) -> bool
