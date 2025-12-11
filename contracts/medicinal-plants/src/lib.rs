@@ -174,13 +174,3 @@ impl MedicinalPlantsContract {
 }
 
 mod test;
-
-    /// Get votes count for a plant
-    pub fn get_plant_votes(env: &Env, plant_id: String) -> i128 {
-        env.storage().instance().get(&DataKey::PlantVotes(plant_id)).unwrap_or(0i128)
-    }
-
-    /// Get listing data for a specific plant
-    pub fn get_listing(env: &Env, plant_id: String) -> Option<Listing> {
-        env.storage().instance().get(&DataKey::Listing(plant_id))
-    }
