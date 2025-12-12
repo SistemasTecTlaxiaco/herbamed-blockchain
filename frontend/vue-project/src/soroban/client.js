@@ -397,31 +397,31 @@ export async function submitOperation(operation = {}) {
   return result
 }
 
-// Storage de plantas LOCALES (backup temporal)
-const PLANTS_STORAGE_KEY = 'herbamed_plants_backup'
+// Storage de plantas locales (no blockchain)
+const PLANTS_STORAGE_KEY = 'herbamed_plants'
 
-function getLocalPlantsBackup() {
+function getLocalPlants() {
   if (typeof window === 'undefined' || !window.localStorage) return []
   try {
     const stored = window.localStorage.getItem(PLANTS_STORAGE_KEY)
     return stored ? JSON.parse(stored) : []
   } catch (e) {
-    console.error('[getLocalPlantsBackup] Error parsing storage:', e)
+    console.error('[getLocalPlants] Error parsing storage:', e)
     return []
   }
 }
 
-function saveLocalPlantsBackup(plants) {
+function saveLocalPlants(plants) {
   if (typeof window === 'undefined' || !window.localStorage) return
   try {
     window.localStorage.setItem(PLANTS_STORAGE_KEY, JSON.stringify(plants))
   } catch (e) {
-    console.error('[saveLocalPlantsBackup] Error saving to storage:', e)
+    console.error('[saveLocalPlants] Error saving to storage:', e)
   }
 }
 
 export async function registerPlant(plantData) {
-  // Register plant EN EL BLOCKCHAIN via contract
+  // Register plant in REAL blockchain transaction via contract
   // Contract signature: register_plant(id: String, name: String, scientific_name: String, properties: Vec<String>)
   const plant = plantData || {}
   const id = plant.id || `PLANT-${Date.now()}`
@@ -429,21 +429,17 @@ export async function registerPlant(plantData) {
   const scientificName = plant.scientificName || plant.scientific_name || ''
   const properties = Array.isArray(plant.properties) ? plant.properties.filter(p => p.trim()) : []
   
-  console.log('[registerPlant] Enviando al blockchain:', { id, name, scientificName, properties })
+  console.log('[registerPlant] Registrando planta en BLOCKCHAIN:', { id, name, scientificName, properties })
   
-  // Enviar transacción REAL al blockchain
+  // REAL blockchain transaction
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'register_plant', 
     args: [id, name, scientificName, properties] 
   })
-  
   const status = (resp?.status || 'PENDING').toUpperCase()
-  // Aceptar SUCCESS o PENDING como éxito
+  // Aceptar SUCCESS o PENDING como éxito (la transacción está siendo procesada)
   const success = status === 'SUCCESS' || status === 'PENDING'
-  
-  console.log('[registerPlant] ✅ Transacción enviada al blockchain')
-  
   return {
     success,
     status,
@@ -478,7 +474,7 @@ export function getStellarExplorerLink(txHash) {
 export async function getAllPlants() {
   // Query contract for all registered plants using get_all_plants()
   try {
-    console.log('[getAllPlants] Consultando plantas desde el blockchain...')
+    console.log('[getAllPlants] Consultando plantas desde el contrato (blockchain)...')
     
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
@@ -500,7 +496,7 @@ export async function getAllPlants() {
       .setTimeout(30)
     
     const transaction = txBuilder.build()
-    console.log('[getAllPlants] Simulando transacción...')
+    console.log('[getAllPlants] Simulando query...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
@@ -537,11 +533,11 @@ export async function getAllPlants() {
 
     try {
       const plants = scValToNative(result)
-      console.log('[getAllPlants] Plantas convertidas:', plants)
+      console.log('[getAllPlants] Plantas convertidas (scValToNative):', plants)
 
       if (Array.isArray(plants) && plants.length > 0) {
         const normalized = plants.map(normalizePlant).filter(Boolean)
-        console.log('[getAllPlants] Plantas cargadas desde blockchain:', normalized.length)
+        console.log('[getAllPlants] Plantas cargadas:', normalized.length)
         return normalized
       }
 
@@ -567,7 +563,7 @@ export async function getAllPlants() {
 }
 
 export async function getPlant(plantId) {
-  // Query contract for specific plant (read-only from blockchain)
+  // Query contract for specific plant (read-only)
   // Contract signature: get_plant(id: String) -> Option<MedicinalPlant>
   try {
     console.log('[getPlant] Consultando planta del blockchain:', plantId)
@@ -586,6 +582,8 @@ export async function getPlant(plantId) {
     const account = await server.getAccount(publicKey)
     const args = [nativeToScVal(plantId, {type: 'string'})]
     
+    console.log('[getPlant] Args convertidos:', args)
+    
     const contractOperation = contract.call('get_plant', ...args)
     const txBuilder = new TransactionBuilder(account, {
       fee: stellar.BASE_FEE,
@@ -595,12 +593,15 @@ export async function getPlant(plantId) {
       .setTimeout(30)
     
     const transaction = txBuilder.build()
+    console.log('[getPlant] Simulando transacción...')
     const simulateResponse = await server.simulateTransaction(transaction)
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
       console.error('[getPlant] Simulation error:', simulateResponse)
       return null
     }
+    
+    console.log('[getPlant] Simulación exitosa')
     
     // Parse result from simulation
     if (!simulateResponse.result || !simulateResponse.result.retval) {
@@ -609,6 +610,8 @@ export async function getPlant(plantId) {
     }
     
     const result = simulateResponse.result.retval
+    console.log('[getPlant] Resultado ScVal:', JSON.stringify(result, null, 2))
+
     const normalizePlant = (plant) => {
       if (plant === null || plant === undefined) return null
       if (Array.isArray(plant)) {
@@ -628,8 +631,13 @@ export async function getPlant(plantId) {
     // El contrato retorna Option<MedicinalPlant>
     try {
       const plant = scValToNative(result)
-      console.log('[getPlant] Planta encontrada en blockchain:', plant)
+      console.log('[getPlant] Planta convertida:', plant)
       const normalized = normalizePlant(plant)
+      if (!normalized) {
+        console.log('[getPlant] Planta no encontrada (Option::None)')
+        return null
+      }
+      console.log('[getPlant] Planta encontrada:', normalized)
       return normalized
     } catch (convertError) {
       console.error('[getPlant] Error al convertir ScVal:', convertError)
