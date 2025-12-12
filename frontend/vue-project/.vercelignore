@@ -1,0 +1,6 @@
+.github
+.env.local
+src
+scripts
+public
+*.md

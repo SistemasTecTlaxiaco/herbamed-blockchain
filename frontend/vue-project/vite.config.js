@@ -4,7 +4,7 @@ import { fileURLToPath, URL } from 'url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/herbamed-blockchain/',
+  base: '/',
   plugins: [
     vue({
       template: {
@@ -24,9 +24,6 @@ export default defineConfig({
     port: 3000,
     strictPort: false,
     cors: true,
-    headers: {
-      'Content-Security-Policy': "default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob: 'unsafe-inline'; frame-src *; style-src * 'unsafe-inline';"
-    },
     watch: {
       usePolling: true
     }
