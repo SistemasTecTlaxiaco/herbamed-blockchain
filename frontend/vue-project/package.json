@@ -26,6 +26,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.2",
     "jsdom": "^21.1.0",
+    "terser": "^5.44.1",
     "vite": "^7.2.2",
     "vitest": "^1.1.5"
   },
