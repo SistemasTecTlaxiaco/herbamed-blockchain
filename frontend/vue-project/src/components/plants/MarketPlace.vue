@@ -237,22 +237,54 @@ import { onMounted, ref, computed, onActivated } from 'vue'
 import soroban from '../../soroban/client'
 import { useStore } from 'vuex'
 
-// Planta default para marketplace
-const DEFAULT_LISTING = {
-  plant_id: 'DEFAULT-LAVANDA-002',
-  seller: 'GDEFAULTSELLERADDRESS1234567890ABCDEFGHIJKLMNOP',
-  price: 15,
-  available: true,
-  plantInfo: {
-    id: 'DEFAULT-LAVANDA-002',
-    name: 'Lavanda',
-    scientific_name: 'Lavandula angustifolia',
-    properties: ['Relajante', 'Antiséptica', 'Cicatrizante', 'Aromática'],
-    validated: true,
-    votes: 3
+// Plantas default para marketplace
+const DEFAULT_LISTINGS = [
+  {
+    plant_id: 'D-LAVANDA-002',
+    seller: 'GDEFAULTSELLERADDRESS1234567890ABCDEFGHIJKLMNOP',
+    price: 15,
+    available: true,
+    plantInfo: {
+      id: 'D-LAVANDA-002',
+      name: 'Lavanda',
+      scientific_name: 'Lavandula angustifolia',
+      properties: ['Relajante', 'Antiséptica', 'Cicatrizante', 'Aromática'],
+      validated: true,
+      votes: 3
+    },
+    isDefault: true
   },
-  isDefault: true
-}
+  {
+    plant_id: 'D-JENGIBRE-006',
+    seller: 'GDEFAULTSELLERADDRESS2XXXXXXXXXXXXXXXXXXXXXXXX',
+    price: 20,
+    available: true,
+    plantInfo: {
+      id: 'D-JENGIBRE-006',
+      name: 'Jengibre',
+      scientific_name: 'Zingiber officinale',
+      properties: ['Antiinflamatoria', 'Digestiva', 'Náuseas', 'Antioxidante'],
+      validated: true,
+      votes: 6
+    },
+    isDefault: true
+  },
+  {
+    plant_id: 'D-EUCALIPTO-007',
+    seller: 'GDEFAULTSELLERADDRESS3YYYYYYYYYYYYYYYYYYYYYYYY',
+    price: 12,
+    available: true,
+    plantInfo: {
+      id: 'D-EUCALIPTO-007',
+      name: 'Eucalipto',
+      scientific_name: 'Eucalyptus globulus',
+      properties: ['Descongestionante', 'Expectorante', 'Antiséptico', 'Refrescante'],
+      validated: true,
+      votes: 4
+    },
+    isDefault: true
+  }
+]
 
 export default {
   name: 'MarketPlace',
@@ -293,16 +325,18 @@ export default {
         loading.value = true
         console.log('[MarketPlace] Cargando datos desde blockchain...')
 
-        // Cargar todas las plantas
+        // Cargar todas las plantas (filtrar defaults con D-)
         const plants = await soroban.getAllPlants()
-        console.log('[MarketPlace] Plantas obtenidas:', plants.length)
+        const realPlants = plants.filter(p => !p.id || !p.id.startsWith('D-'))
+        console.log('[MarketPlace] Plantas obtenidas:', plants.length, 'Reales:', realPlants.length)
 
-        // Cargar todos los listings
+        // Cargar todos los listings (filtrar defaults con D-)
         const listings = await soroban.getAllListings()
-        console.log('[MarketPlace] Listings obtenidos:', listings.length)
+        const realListings = listings.filter(l => !l.plant_id || !l.plant_id.startsWith('D-'))
+        console.log('[MarketPlace] Listings obtenidos:', listings.length, 'Reales:', realListings.length)
 
         // Enriquecer listings con info de plantas
-        for (const listingData of listings) {
+        for (const listingData of realListings) {
           try {
             const plantInfo = await soroban.getPlant(listingData.plant_id)
             listingData.plantInfo = plantInfo
@@ -311,20 +345,22 @@ export default {
           }
         }
 
-        // Agregar defaults si no hay datos
-        const combinedListings = [...listings]
-        if (combinedListings.length === 0) {
-          combinedListings.push(DEFAULT_LISTING)
+        // Combinar: listings reales + defaults al final
+        const combinedListings = [...realListings]
+        for (const defaultListing of DEFAULT_LISTINGS) {
+          if (!combinedListings.find(l => l.plant_id === defaultListing.plant_id)) {
+            combinedListings.push(defaultListing)
+          }
         }
 
-        allPlants.value = plants
+        allPlants.value = realPlants
         allListings.value = combinedListings
         
         console.log('[MarketPlace] Carga completa. Plantas:', allPlants.value.length, 'Listings:', allListings.value.length)
       } catch (error) {
         console.error('[MarketPlace] Error al cargar datos:', error)
         // Mostrar datos default aunque falle
-        allListings.value = [DEFAULT_LISTING]
+        allListings.value = [...DEFAULT_LISTINGS]
         status.value = {
           type: 'warning',
           message: `⚠️ No se pudieron cargar datos de blockchain. Mostrando datos default.`

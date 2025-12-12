@@ -183,18 +183,42 @@ import { onMounted, ref, computed, onActivated } from 'vue'
 import soroban from '../../soroban/client'
 import { useStore } from 'vuex'
 
-// Planta default para validación
-const DEFAULT_VALIDATION_PLANT = {
-  id: 'DEFAULT-ROMERO-003',
-  name: 'Romero',
-  scientific_name: 'Rosmarinus officinalis',
-  properties: ['Antioxidante', 'Estimulante', 'Digestiva', 'Antimicrobiana'],
-  validated: false,
-  votes: 2,
-  seller: 'GDEFAULTSELLERVALIDATION1234567890ABCDEFG',
-  hasVoted: false,
-  isDefault: true
-}
+// Plantas default para validación
+const DEFAULT_VALIDATION_PLANTS = [
+  {
+    id: 'D-ROMERO-003',
+    name: 'Romero',
+    scientific_name: 'Rosmarinus officinalis',
+    properties: ['Antioxidante', 'Estimulante', 'Digestiva', 'Antimicrobiana'],
+    validated: false,
+    votes: 2,
+    seller: 'GDEFAULTSELLERVALIDATION1234567890ABCDEFG',
+    hasVoted: false,
+    isDefault: true
+  },
+  {
+    id: 'D-CALENDULA-008',
+    name: 'Caléndula',
+    scientific_name: 'Calendula officinalis',
+    properties: ['Cicatrizante', 'Antiinflamatoria', 'Antiséptica', 'Calmante'],
+    validated: false,
+    votes: 1,
+    seller: 'GDEFAULTSELLERVALIDATION2XXXXXXXXXXXXX',
+    hasVoted: false,
+    isDefault: true
+  },
+  {
+    id: 'D-TOMILLO-009',
+    name: 'Tomillo',
+    scientific_name: 'Thymus vulgaris',
+    properties: ['Antiséptico', 'Expectorante', 'Digestivo', 'Antibacteriano'],
+    validated: true,
+    votes: 5,
+    seller: 'GDEFAULTSELLERVALIDATION3YYYYYYYYYYYYYYY',
+    hasVoted: false,
+    isDefault: true
+  }
+]
 
 export default {
   name: 'ValidatorDashboard',
@@ -255,16 +279,18 @@ export default {
         loading.value = true
         console.log('[ValidatorDashboard] Cargando datos desde blockchain...')
 
-        // Cargar todas las plantas
+        // Cargar todas las plantas (filtrar defaults con D-)
         const plants = await soroban.getAllPlants()
-        console.log('[ValidatorDashboard] Plantas obtenidas:', plants.length)
+        const realPlants = plants.filter(p => !p.id || !p.id.startsWith('D-'))
+        console.log('[ValidatorDashboard] Plantas obtenidas:', plants.length, 'Reales:', realPlants.length)
 
-        // Cargar todos los listings
+        // Cargar todos los listings (filtrar defaults con D-)
         const listings = await soroban.getAllListings()
-        console.log('[ValidatorDashboard] Listings obtenidos:', listings.length)
+        const realListings = listings.filter(l => !l.plant_id || !l.plant_id.startsWith('D-'))
+        console.log('[ValidatorDashboard] Listings obtenidos:', listings.length, 'Reales:', realListings.length)
 
-        // Obtener votos para cada planta
-        for (const plant of plants) {
+        // Obtener votos para cada planta real
+        for (const plant of realPlants) {
           try {
             const votes = await soroban.getPlantVotes(plant.id)
             plant.votes = votes
@@ -276,34 +302,39 @@ export default {
           }
         }
 
-        // Si no hay datos, agregar default
-        if (listings.length === 0) {
-          listings.push({
-            plant_id: DEFAULT_VALIDATION_PLANT.id,
-            seller: DEFAULT_VALIDATION_PLANT.seller,
-            price: 20,
-            available: true
-          })
+        // Si no hay datos reales, agregar defaults
+        const combinedPlants = [...realPlants]
+        const combinedListings = [...realListings]
+
+        for (const defaultPlant of DEFAULT_VALIDATION_PLANTS) {
+          if (!combinedPlants.find(p => p.id === defaultPlant.id)) {
+            combinedPlants.push(defaultPlant)
+          }
+          // Agregar listing default correspondiente
+          if (!combinedListings.find(l => l.plant_id === defaultPlant.id)) {
+            combinedListings.push({
+              plant_id: defaultPlant.id,
+              seller: defaultPlant.seller,
+              price: 20,
+              available: true
+            })
+          }
         }
 
-        if (plants.length === 0 || !plants.find(p => p.id === DEFAULT_VALIDATION_PLANT.id)) {
-          plants.push(DEFAULT_VALIDATION_PLANT)
-        }
-
-        allPlants.value = plants
-        allListings.value = listings
+        allPlants.value = combinedPlants
+        allListings.value = combinedListings
         
         console.log('[ValidatorDashboard] Carga completa. Plantas:', allPlants.value.length, 'Listings:', allListings.value.length)
       } catch (error) {
         console.error('[ValidatorDashboard] Error al cargar datos:', error)
         // Mostrar datos default aunque falle
-        allPlants.value = [DEFAULT_VALIDATION_PLANT]
-        allListings.value = [{
-          plant_id: DEFAULT_VALIDATION_PLANT.id,
-          seller: DEFAULT_VALIDATION_PLANT.seller,
+        allPlants.value = [...DEFAULT_VALIDATION_PLANTS]
+        allListings.value = DEFAULT_VALIDATION_PLANTS.map(p => ({
+          plant_id: p.id,
+          seller: p.seller,
           price: 20,
           available: true
-        }]
+        }))
         status.value = {
           type: 'warning',
           message: `⚠️ No se pudieron cargar datos de blockchain. Mostrando datos default.`

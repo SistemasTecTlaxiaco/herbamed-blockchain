@@ -1,19 +1,22 @@
 node_modules
 target
 .git
-.gitignore
 .env.local
 .env.*.local
-contracts
-src
-tests
-*.rs
-*.toml
+*.log
+.DS_Store
+Thumbs.db
+
+# Rust build artifacts
+target/
 Cargo.lock
-README.md
-DEVELOPER_GUIDE.md
-USER_MANUAL.md
-ROADMAP.md
-RESPUESTAS_PREGUNTAS.md
-ESTADO_FINAL.md
-.vercelignore
+
+# Tests
+tests/
+test-*.js
+
+# Backups
+frontend/vue-project/backups/
+
+# Scripts no necesarios para producción
+frontend/vue-project/scripts/

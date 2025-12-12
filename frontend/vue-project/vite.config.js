@@ -42,12 +42,27 @@ export default defineConfig({
     include: ['@stellar/stellar-sdk']
   },
   build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: false,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      }
+    },
     rollupOptions: {
       output: {
         manualChunks: {
-          'stellar-sdk': ['@stellar/stellar-sdk']
-        }
+          'stellar-sdk': ['@stellar/stellar-sdk'],
+          'vue-vendor': ['vue', 'vue-router', 'vuex']
+        },
+        chunkFileNames: 'assets/js/[name]-[hash].js',
+        entryFileNames: 'assets/js/[name]-[hash].js',
+        assetFileNames: 'assets/[ext]/[name]-[hash].[ext]'
       }
-    }
+    },
+    chunkSizeWarningLimit: 1000
   }
 })

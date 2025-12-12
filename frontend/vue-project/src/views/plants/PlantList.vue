@@ -87,16 +87,54 @@
 import { onMounted, ref, onActivated } from 'vue'
 import soroban from '../../soroban/client'
 
-// Planta default medicinal real para demostración
-const DEFAULT_PLANT = {
-  id: 'DEFAULT-MANZANILLA-001',
-  name: 'Manzanilla',
-  scientific_name: 'Matricaria chamomilla',
-  properties: ['Antiinflamatoria', 'Digestiva', 'Calmante', 'Antiespasmódica'],
-  validated: true,
-  votes: 5,
-  isDefault: true
-}
+// Plantas default medicinales reales para demostración
+const DEFAULT_PLANTS = [
+  {
+    id: 'D-MANZANILLA-001',
+    name: 'Manzanilla',
+    scientific_name: 'Matricaria chamomilla',
+    properties: ['Antiinflamatoria', 'Digestiva', 'Calmante', 'Antiespasmódica'],
+    validated: true,
+    votes: 5,
+    isDefault: true
+  },
+  {
+    id: 'D-LAVANDA-002',
+    name: 'Lavanda',
+    scientific_name: 'Lavandula angustifolia',
+    properties: ['Relajante', 'Antiséptica', 'Cicatrizante', 'Aromática'],
+    validated: true,
+    votes: 3,
+    isDefault: true
+  },
+  {
+    id: 'D-ROMERO-003',
+    name: 'Romero',
+    scientific_name: 'Rosmarinus officinalis',
+    properties: ['Antioxidante', 'Estimulante', 'Digestiva', 'Antimicrobiana'],
+    validated: false,
+    votes: 2,
+    isDefault: true
+  },
+  {
+    id: 'D-MENTA-004',
+    name: 'Menta',
+    scientific_name: 'Mentha piperita',
+    properties: ['Digestiva', 'Refrescante', 'Analgésica', 'Descongestionante'],
+    validated: true,
+    votes: 4,
+    isDefault: true
+  },
+  {
+    id: 'D-ALBAHACA-005',
+    name: 'Albahaca',
+    scientific_name: 'Ocimum basilicum',
+    properties: ['Antiinflamatoria', 'Antibacteriana', 'Digestiva', 'Antioxidante'],
+    validated: false,
+    votes: 1,
+    isDefault: true
+  }
+]
 
 export default {
   name: 'PlantList',
@@ -114,23 +152,32 @@ export default {
         searching.value = true
         status.value = null
 
-        console.log('[PlantList] Buscando:', searchId.value)
-        const plant = await soroban.getPlant(searchId.value.trim())
+        const searchTerm = searchId.value.trim()
+        console.log('[PlantList] Buscando:', searchTerm)
+
+        // Primero buscar en la lista actual
+        const existingIndex = plants.value.findIndex(p => p.id === searchTerm)
+        if (existingIndex !== -1) {
+          // Mover al inicio para resaltar
+          const foundPlant = plants.value[existingIndex]
+          plants.value.splice(existingIndex, 1)
+          plants.value.unshift(foundPlant)
+          
+          status.value = {
+            type: 'success',
+            message: `✅ Planta "${foundPlant.name}" encontrada y posicionada al inicio`
+          }
+          searchId.value = ''
+          return
+        }
+
+        // Si no existe en la lista, buscar en blockchain
+        const plant = await soroban.getPlant(searchTerm)
 
         if (!plant) {
           status.value = {
             type: 'warning',
-            message: `⚠️ No se encontró planta con ID: ${searchId.value}`
-          }
-          return
-        }
-
-        // Verificar si ya existe
-        const exists = plants.value.find(p => p.id === plant.id)
-        if (exists) {
-          status.value = {
-            type: 'info',
-            message: `ℹ️ La planta ${plant.id} ya está en la lista`
+            message: `⚠️ No se encontró planta con ID: ${searchTerm}`
           }
           return
         }
@@ -144,11 +191,12 @@ export default {
           plant.votes = 0
         }
 
-        plants.value.push(plant)
+        // Agregar al inicio
+        plants.value.unshift(plant)
 
         status.value = {
           type: 'success',
-          message: `✅ Planta ${plant.name} agregada a la lista`
+          message: `✅ Planta "${plant.name}" encontrada en blockchain y agregada al inicio`
         }
 
         searchId.value = ''
@@ -168,14 +216,16 @@ export default {
         loading.value = true
         console.log('[PlantList] Cargando plantas desde blockchain...')
 
-        // Incluir planta default
-        const defaultPlants = [DEFAULT_PLANT]
-
         const all = await soroban.getAllPlants()
-        console.log('[PlantList] Plantas obtenidas:', all)
+        console.log('[PlantList] Plantas obtenidas desde blockchain:', all.length)
 
         const enriched = []
         for (const plant of all) {
+          // No cargar plantas que empiecen con D- (son defaults)
+          if (plant.id && plant.id.startsWith('D-')) {
+            console.log('[PlantList] Omitiendo planta default del contrato:', plant.id)
+            continue
+          }
           try {
             const votes = await soroban.getPlantVotes(plant.id)
             plant.votes = votes
@@ -187,20 +237,20 @@ export default {
           }
         }
 
-        // Combinar default + plantas reales (evitar duplicados)
-        const combined = [...defaultPlants]
-        for (const plant of enriched) {
-          if (!combined.find(p => p.id === plant.id)) {
-            combined.push(plant)
+        // Combinar: plantas reales primero + defaults al final (evitar duplicados)
+        const combined = [...enriched]
+        for (const defaultPlant of DEFAULT_PLANTS) {
+          if (!combined.find(p => p.id === defaultPlant.id)) {
+            combined.push(defaultPlant)
           }
         }
 
         plants.value = combined
-        console.log('[PlantList] Total plantas cargadas:', plants.value.length)
+        console.log('[PlantList] Total plantas cargadas:', plants.value.length, '(Reales:', enriched.length, 'Defaults:', DEFAULT_PLANTS.length, ')')
       } catch (error) {
         console.error('[PlantList] Error al cargar plantas:', error)
-        // Aunque falle, mostrar la default
-        plants.value = [DEFAULT_PLANT]
+        // Aunque falle, mostrar las defaults
+        plants.value = [...DEFAULT_PLANTS]
         status.value = {
           type: 'warning',
           message: `⚠️ No se pudieron cargar plantas de la blockchain. Mostrando plantas default.`

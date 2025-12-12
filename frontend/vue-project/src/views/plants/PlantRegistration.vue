@@ -171,6 +171,12 @@ export default {
         setTimeout(() => {
           window.scrollTo({ top: 0, behavior: 'smooth' })
         }, 100)
+
+        // Redirigir a la lista de plantas después de 3 segundos
+        setTimeout(() => {
+          console.log('[PlantRegistration] Redirigiendo a lista de plantas...')
+          router.push('/plants')
+        }, 3000)
         
       } catch (error) {
         console.error('[PlantRegistration] Error al registrar planta:', error)

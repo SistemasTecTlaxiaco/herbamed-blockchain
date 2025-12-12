@@ -1,17 +1,32 @@
 {
-  "version": 2,
-  "public": false,
-  "buildCommand": "npm run build",
+  "buildCommand": "cd frontend/vue-project && npm install && npm run build",
   "outputDirectory": "frontend/vue-project/dist",
   "framework": "vite",
-  "installCommand": "npm run install",
-  "env": {
-    "VITE_APP_TITLE": "Herbamed Blockchain"
-  },
-  "routes": [
+  "installCommand": "cd frontend/vue-project && npm install",
+  "devCommand": "cd frontend/vue-project && npm run dev",
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-Requested-With, Content-Type, Authorization"
+        }
+      ]
     }
   ]
 }
