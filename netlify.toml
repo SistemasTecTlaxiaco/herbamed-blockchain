@@ -1,7 +1,7 @@
 [build]
   base = "frontend/vue-project"
   command = "npm install && npm run build"
-  publish = "frontend/vue-project/dist"
+  publish = "dist"
 
 [[redirects]]
   from = "/*"
