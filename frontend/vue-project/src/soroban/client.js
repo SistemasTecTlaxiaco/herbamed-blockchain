@@ -656,11 +656,8 @@ export async function getAllListings() {
     
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
-    
-    if (!publicKey) {
-      publicKey = Keypair.random().publicKey()
-    }
+    let publicKey = getSimulationPublicKey()
+    if (!publicKey) throw new Error('No hay cuenta disponible para simular get_all_listings')
     
     const account = await server.getAccount(publicKey)
     const contractOperation = contract.call('get_all_listings')
@@ -900,6 +897,19 @@ export function getConnectedPublicKey() {
   return null
 }
 
+// Fallback robusto para simulaciones read-only: usa cuenta conectada, local o SECRET_KEY del config
+function getSimulationPublicKey() {
+  const pk = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  if (pk) return pk
+  try {
+    if (SECRET_KEY) {
+      return Keypair.fromSecret(SECRET_KEY).publicKey()
+    }
+  } catch (_) {}
+  // Último recurso: evitar usar cuenta aleatoria que no existe on-chain
+  return null
+}
+
 export async function listForSale(plantId, price) {
   // Contract signature: list_for_sale(plant_id: String, seller: Address, price: i128)
   const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
@@ -944,11 +954,8 @@ export async function getListing(plantId) {
 
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
-
-    if (!publicKey) {
-      publicKey = Keypair.random().publicKey()
-    }
+    let publicKey = getSimulationPublicKey()
+    if (!publicKey) throw new Error('No hay cuenta disponible para simular get_listing')
 
     const account = await server.getAccount(publicKey)
     const args = [nativeToScVal(plantId, { type: 'string' })]

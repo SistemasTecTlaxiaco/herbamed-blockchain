@@ -46,14 +46,14 @@
             </h6>
             <div class="card-text flex-grow-1">
               <p><small class="text-muted">ID: {{ listing.plant_id }}</small></p>
-              <p v-if="listing.plantInfo?.properties" class="mb-2">
+              <div v-if="listing.plantInfo?.properties" class="mb-2">
                 <strong>Propiedades:</strong>
                 <ul>
                   <li v-for="(prop, idx) in listing.plantInfo.properties.slice(0, 3)" :key="idx">
                     {{ prop }}
                   </li>
                 </ul>
-              </p>
+              </div>
               <p><strong>Vendedor:</strong> {{ formatAddress(listing.seller) }}</p>
             </div>
             <div class="mt-auto">
