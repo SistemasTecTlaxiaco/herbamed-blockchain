@@ -1,0 +1,8 @@
+[build]
+  command = "cd frontend/vue-project && npm install && npm run build"
+  publish = "frontend/vue-project/dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
