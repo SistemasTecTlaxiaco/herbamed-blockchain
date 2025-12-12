@@ -175,7 +175,12 @@ export default {
         // Redirigir a la lista de plantas después de 3 segundos
         setTimeout(() => {
           console.log('[PlantRegistration] Redirigiendo a lista de plantas...')
-          router.push('/plants')
+          router.push('/plants').then(() => {
+            // Forzar recarga de la lista después de navegar
+            if (typeof window !== 'undefined' && window.location) {
+              window.location.reload()
+            }
+          })
         }, 3000)
         
       } catch (error) {

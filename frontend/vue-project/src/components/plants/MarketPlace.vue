@@ -302,16 +302,21 @@ export default {
 
     const currentUserAddress = computed(() => store.state.publicKey || '')
 
-    // Computed: Mis plantas sin precio (para listar)
+    // Computed: Mis plantas sin precio (para listar) - SIN defaults
     const myPlantsWithoutPrice = computed(() => {
       const myListedIds = myListings.value.map(l => l.plant_id)
-      return allPlants.value.filter(p => !myListedIds.includes(p.id))
+      // Filtrar: solo plantas reales (no defaults D-)
+      return allPlants.value.filter(p => !myListedIds.includes(p.id) && (!p.id || !p.id.startsWith('D-')))
     })
 
-    // Computed: Mis listings
+    // Computed: Mis listings - SIN defaults
     const myListings = computed(() => {
       if (!currentUserAddress.value) return []
-      return allListings.value.filter(l => l.seller === currentUserAddress.value)
+      // Filtrar: solo mis listings reales (no defaults D-)
+      return allListings.value.filter(l => 
+        l.seller === currentUserAddress.value && 
+        (!l.plant_id || !l.plant_id.startsWith('D-'))
+      )
     })
 
     // Computed: Listings de otros

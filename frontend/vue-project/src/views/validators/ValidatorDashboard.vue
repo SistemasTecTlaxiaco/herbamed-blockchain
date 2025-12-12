@@ -236,10 +236,13 @@ export default {
 
     const currentUserAddress = computed(() => store.state.publicKey || '')
 
-    // Computed: Mis plantas en venta con validaciones
+    // Computed: Mis plantas en venta con validaciones - SIN defaults
     const myPlantsInSale = computed(() => {
       if (!currentUserAddress.value) return []
-      const myListings = allListings.value.filter(l => l.seller === currentUserAddress.value)
+      const myListings = allListings.value.filter(l => 
+        l.seller === currentUserAddress.value &&
+        (!l.plant_id || !l.plant_id.startsWith('D-'))
+      )
       return myListings.map(listing => {
         const plant = allPlants.value.find(p => p.id === listing.plant_id)
         return {
