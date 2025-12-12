@@ -1,162 +1,101 @@
 <template>
-  <div class="container-fluid mt-4">
-    <h2>✅ Validación de Plantas Medicinales</h2>
+  <div class="container mt-4">
+    <h2>🌿 Validación de Plantas</h2>
     
-    <!-- Búsqueda y actualizar -->
+    <!-- Búsqueda manual de plantas -->
     <div class="card mb-4">
       <div class="card-body">
-        <div class="row g-2 align-items-end">
-          <div class="col-auto">
-            <button 
-              class="btn btn-outline-primary"
-              @click="refreshAll"
-              :disabled="loading"
-            >
-              🔄 {{ loading ? 'Actualizando...' : 'Actualizar' }}
-            </button>
-          </div>
-          <div class="col flex-grow-1">
-            <input 
-              v-model="searchId" 
-              type="text" 
-              class="form-control" 
-              placeholder="Buscar planta por ID"
-              @keyup.enter="searchAndAdd"
-            />
-          </div>
-          <div class="col-auto">
-            <button 
-              class="btn btn-primary"
-              @click="searchAndAdd"
-              :disabled="searching || !searchId"
-            >
-              {{ searching ? '🔍' : '🔍 Buscar' }}
-            </button>
-          </div>
+        <h5>🔍 Buscar Planta por ID</h5>
+        <div class="input-group">
+          <input 
+            v-model="searchId" 
+            type="text" 
+            class="form-control" 
+            placeholder="Ej: 001, TEST-001, ALBACA-001"
+            @keyup.enter="searchPlant"
+          />
+          <button 
+            class="btn btn-primary" 
+            @click="searchPlant"
+            :disabled="searching || !searchId"
+          >
+            {{ searching ? '🔍 Buscando...' : '🔍 Buscar' }}
+          </button>
         </div>
-        <small class="text-muted d-block mt-2">Busca plantas para validarlas, o ve los listados abajo</small>
+        <small class="text-muted">
+          Busca plantas para ver su estado de validación o validar plantas de otros usuarios
+        </small>
       </div>
     </div>
 
-    <!-- Tabs: 2 menús -->
-    <ul class="nav nav-tabs mb-4">
-      <li class="nav-item">
+    <!-- Tabs para los 2 menús -->
+    <ul class="nav nav-tabs mb-4" role="tablist">
+      <li class="nav-item" role="presentation">
         <button 
           class="nav-link" 
           :class="{ active: activeTab === 'my-validations' }"
           @click="activeTab = 'my-validations'"
         >
-          🏆 Mis Plantas en Venta ({{ userValidations.length }})
+          📊 Mis Plantas Validadas ({{ myPlantsInSale.length }})
         </button>
       </li>
-      <li class="nav-item">
+      <li class="nav-item" role="presentation">
         <button 
-          class="nav-link"
-          :class="{ active: activeTab === 'other-validations' }"
-          @click="activeTab = 'other-validations'"
+          class="nav-link" 
+          :class="{ active: activeTab === 'validate-others' }"
+          @click="activeTab = 'validate-others'"
         >
-          🌍 Para Validar ({{ otherValidations.length }})
+          ✅ Validar Plantas de Otros ({{ otherPlantsToValidate.length }})
         </button>
       </li>
     </ul>
 
-    <!-- TAB 1: MIS PLANTAS EN VENTA (cuántas validaciones tienen) -->
-    <div v-if="activeTab === 'my-validations'" class="tab-content">
-      <h4>🏆 Mis Plantas en Venta - Conteo de Validaciones</h4>
-      <p class="text-muted">Aquí puedes ver cuántas validaciones tiene cada una de tus plantas en venta.</p>
-
-      <div v-if="loading && userValidations.length === 0" class="alert alert-info">
-        ⏳ Cargando...
-      </div>
-
-      <div v-else-if="userValidations.length === 0" class="alert alert-info">
-        <h5>📭 No tienes plantas en venta</h5>
-        <p class="mb-0">Ve al Marketplace para listar tus plantas primero.</p>
-      </div>
-
-      <div class="row mt-3">
-        <div class="col-md-6 mb-4" v-for="listing in userValidations" :key="listing.plant_id">
-          <div class="card h-100">
-            <div class="card-header bg-warning text-dark">
-              <h5 class="mb-0">🌿 {{ listing.plantInfo?.name || listing.plant_id }}</h5>
-            </div>
-            <div class="card-body d-flex flex-column">
-              <h6 class="card-subtitle mb-2 text-muted">
-                {{ listing.plantInfo?.scientific_name || 'Planta medicinal' }}
-              </h6>
-              <div class="card-text flex-grow-1">
-                <p><small class="text-muted"><strong>ID:</strong> {{ listing.plant_id }}</small></p>
-                <p v-if="listing.plantInfo?.properties && listing.plantInfo.properties.length > 0" class="mb-2">
-                  <strong>Propiedades:</strong>
-                  <ul class="mb-0">
-                    <li v-for="(prop, idx) in listing.plantInfo.properties.slice(0, 3)" :key="idx">{{ prop }}</li>
-                  </ul>
-                </p>
-              </div>
-              <div class="mt-auto pt-3 border-top">
-                <div class="d-flex justify-content-between align-items-center">
-                  <span class="badge bg-info">Precio: {{ listing.price }} XLM</span>
-                  <span class="badge bg-secondary">
-                    {{ listing.votes || 0 }} validaciones
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div v-if="loading" class="alert alert-info">
+      <h5>⏳ Cargando validaciones desde blockchain...</h5>
     </div>
 
-    <!-- TAB 2: PLANTAS AJENAS PARA VALIDAR -->
-    <div v-if="activeTab === 'other-validations'" class="tab-content">
-      <h4>🌍 Plantas de Otros Usuarios para Validar</h4>
-      <p class="text-muted">Aquí están todas las plantas que otros usuarios pusieron en venta. Puedes votarlas para validarlas.</p>
-
-      <div v-if="loading && otherValidations.length === 0" class="alert alert-info">
-        ⏳ Cargando...
+    <!-- Tab 1: Mis plantas en venta y sus validaciones -->
+    <div v-if="activeTab === 'my-validations'" class="tab-pane">
+      <h4>📊 Mis Plantas en Venta</h4>
+      <p class="text-muted">Plantas que has puesto en venta y cuántos usuarios las han validado.</p>
+      
+      <div v-if="myPlantsInSale.length === 0" class="alert alert-info">
+        📭 No tienes plantas en venta actualmente.
       </div>
 
-      <div v-else-if="otherValidations.length === 0" class="alert alert-info">
-        <h5>📭 No hay plantas de otros usuarios para validar</h5>
-        <p class="mb-0">Vuelve luego o usa el buscador para buscar plantas específicas.</p>
-      </div>
-
-      <div class="row mt-3">
-        <div class="col-md-6 mb-4" v-for="listing in otherValidations" :key="listing.plant_id">
+      <div class="row">
+        <div class="col-md-6 mb-4" v-for="plant in myPlantsInSale" :key="plant.id">
           <div class="card h-100">
-            <div class="card-header bg-info text-white">
-              <h5 class="mb-0">🌿 {{ listing.plantInfo?.name || listing.plant_id }}</h5>
-            </div>
             <div class="card-body d-flex flex-column">
-              <h6 class="card-subtitle mb-2 text-muted">
-                {{ listing.plantInfo?.scientific_name || 'Planta medicinal' }}
-              </h6>
+              <h5 class="card-title">🌿 {{ plant.name }}</h5>
+              <h6 class="card-subtitle mb-2 text-muted">{{ plant.scientific_name }}</h6>
               <div class="card-text flex-grow-1">
-                <p><small class="text-muted"><strong>ID:</strong> {{ listing.plant_id }}</small></p>
-                <p><small class="text-muted"><strong>Vendedor:</strong> {{ formatAddress(listing.seller) }}</small></p>
-                <p><small class="text-muted"><strong>Precio:</strong> {{ listing.price }} XLM</small></p>
-                <p v-if="listing.plantInfo?.properties && listing.plantInfo.properties.length > 0" class="mb-2">
-                  <strong>Propiedades:</strong>
-                  <ul class="mb-0">
-                    <li v-for="(prop, idx) in listing.plantInfo.properties.slice(0, 3)" :key="idx">{{ prop }}</li>
+                <p><small class="text-muted">ID: {{ plant.id }}</small></p>
+                <div v-if="plant.properties && plant.properties.length > 0">
+                  <p><strong>Propiedades:</strong></p>
+                  <ul class="mb-2">
+                    <li v-for="(property, index) in plant.properties.slice(0, 3)" :key="index">
+                      {{ property }}
+                    </li>
                   </ul>
-                </p>
+                </div>
+                <p><strong>Precio:</strong> {{ plant.listingPrice || 'N/A' }} XLM</p>
               </div>
-              <div class="mt-auto pt-3 border-top">
+              <div class="mt-auto">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                  <span class="badge bg-secondary">
-                    {{ listing.votes || 0 }} validaciones
+                  <span class="badge" :class="plant.validated ? 'bg-success' : 'bg-warning'">
+                    {{ plant.validated ? '✓ Validada' : '⏳ Pendiente' }}
                   </span>
-                  <span class="badge" :class="listing.validated ? 'bg-success' : 'bg-warning'">
-                    {{ listing.validated ? '✓ Validada' : '⏳ Pendiente' }}
+                  <span class="badge bg-info fs-6">
+                    👍 {{ plant.votes || 0 }} validaciones
                   </span>
                 </div>
                 <button 
-                  class="btn btn-success w-100"
-                  @click="votePlant(listing.plant_id)"
-                  :disabled="voting === listing.plant_id || userHasVoted[listing.plant_id]"
+                  class="btn btn-sm btn-outline-secondary w-100" 
+                  @click="refreshVotes(plant.id)"
+                  :disabled="refreshing === plant.id"
                 >
-                  {{ voting === listing.plant_id ? '⏳ Votando...' : userHasVoted[listing.plant_id] ? '✅ Votado' : '👍 Validar' }}
+                  {{ refreshing === plant.id ? '⏳ Actualizando...' : '🔄 Actualizar votos' }}
                 </button>
               </div>
             </div>
@@ -165,7 +104,64 @@
       </div>
     </div>
 
-    <!-- Status alerts -->
+    <!-- Tab 2: Plantas ajenas para validar -->
+    <div v-if="activeTab === 'validate-others'" class="tab-pane">
+      <h4>✅ Validar Plantas de Otros Usuarios</h4>
+      <p class="text-muted">Plantas en venta de otros usuarios que puedes validar.</p>
+      
+      <div v-if="otherPlantsToValidate.length === 0" class="alert alert-info">
+        📭 No hay plantas de otros usuarios para validar. Usa el buscador para encontrar plantas.
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-4" v-for="plant in otherPlantsToValidate" :key="plant.id">
+          <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+              <h5 class="card-title">🌿 {{ plant.name }}</h5>
+              <h6 class="card-subtitle mb-2 text-muted">{{ plant.scientific_name }}</h6>
+              <div class="card-text flex-grow-1">
+                <p><small class="text-muted">ID: {{ plant.id }}</small></p>
+                <div v-if="plant.properties && plant.properties.length > 0">
+                  <p><strong>Propiedades:</strong></p>
+                  <ul class="mb-2">
+                    <li v-for="(property, index) in plant.properties.slice(0, 3)" :key="index">
+                      {{ property }}
+                    </li>
+                  </ul>
+                </div>
+                <p v-if="plant.seller"><strong>Vendedor:</strong> {{ formatAddress(plant.seller) }}</p>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge" :class="plant.validated ? 'bg-success' : 'bg-warning'">
+                    {{ plant.validated ? '✓ Validada' : '⏳ Pendiente' }}
+                  </span>
+                  <span class="badge bg-info">
+                    👍 {{ plant.votes || 0 }} votos
+                  </span>
+                </div>
+                <button 
+                  class="btn btn-success w-100 mb-2" 
+                  @click="votePlant(plant.id)"
+                  :disabled="plant.hasVoted || voting === plant.id || plant.validated"
+                >
+                  {{ voting === plant.id ? '⏳ Votando...' : plant.hasVoted ? '✅ Ya votaste' : '👍 Validar Planta' }}
+                </button>
+                <button 
+                  class="btn btn-sm btn-outline-secondary w-100" 
+                  @click="refreshVotes(plant.id)"
+                  :disabled="refreshing === plant.id"
+                >
+                  {{ refreshing === plant.id ? '⏳' : '🔄' }} Actualizar votos
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Status alerts con links a Stellar Expert -->
     <div v-if="status" class="alert mt-4" :class="`alert-${status.type}`">
       <div class="d-flex justify-content-between align-items-center">
         <span>{{ status.message }}</span>
@@ -175,7 +171,7 @@
           target="_blank" 
           class="btn btn-sm btn-outline-primary"
         >
-          🔗 Stellar Expert →
+          Ver en Stellar Expert →
         </a>
       </div>
     </div>
@@ -183,118 +179,298 @@
 </template>
 
 <script>
-import { onMounted, ref, computed } from 'vue'
-import { useStore } from 'vuex'
+import { onMounted, ref, computed, onActivated } from 'vue'
 import soroban from '../../soroban/client'
+import { useStore } from 'vuex'
+
+// Planta default para validación
+const DEFAULT_VALIDATION_PLANT = {
+  id: 'DEFAULT-ROMERO-003',
+  name: 'Romero',
+  scientific_name: 'Rosmarinus officinalis',
+  properties: ['Antioxidante', 'Estimulante', 'Digestiva', 'Antimicrobiana'],
+  validated: false,
+  votes: 2,
+  seller: 'GDEFAULTSELLERVALIDATION1234567890ABCDEFG',
+  hasVoted: false,
+  isDefault: true
+}
 
 export default {
   name: 'ValidatorDashboard',
   setup() {
     const store = useStore()
-    const loading = ref(false)
+    const activeTab = ref('my-validations')
+    const allPlants = ref([])
+    const allListings = ref([])
+    const voting = ref(null)
+    const refreshing = ref(null)
     const searching = ref(false)
     const searchId = ref('')
-    const activeTab = ref('my-validations')
-    const voting = ref(null)
     const status = ref(null)
-    const userHasVoted = ref({})
+    const loading = ref(false)
 
-    const userValidations = computed(() => store.state.userValidations || [])
-    const otherValidations = computed(() => store.state.otherValidations || [])
+    const currentUserAddress = computed(() => store.state.publicKey || '')
 
-    const formatAddress = (addr) => {
-      if (!addr || addr.length < 10) return addr
-      return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-    }
+    // Computed: Mis plantas en venta con validaciones
+    const myPlantsInSale = computed(() => {
+      if (!currentUserAddress.value) return []
+      const myListings = allListings.value.filter(l => l.seller === currentUserAddress.value)
+      return myListings.map(listing => {
+        const plant = allPlants.value.find(p => p.id === listing.plant_id)
+        return {
+          ...(plant || { id: listing.plant_id, name: listing.plant_id }),
+          listingPrice: listing.price,
+          available: listing.available
+        }
+      })
+    })
 
-    const refreshAll = async () => {
+    // Computed: Plantas de otros para validar
+    const otherPlantsToValidate = computed(() => {
+      if (!currentUserAddress.value) {
+        // Si no hay usuario conectado, mostrar todas las plantas con listings
+        return allListings.value.map(listing => {
+          const plant = allPlants.value.find(p => p.id === listing.plant_id)
+          return {
+            ...(plant || { id: listing.plant_id, name: listing.plant_id }),
+            seller: listing.seller,
+            listingPrice: listing.price
+          }
+        })
+      }
+      const otherListings = allListings.value.filter(l => l.seller !== currentUserAddress.value)
+      return otherListings.map(listing => {
+        const plant = allPlants.value.find(p => p.id === listing.plant_id)
+        return {
+          ...(plant || { id: listing.plant_id, name: listing.plant_id }),
+          seller: listing.seller,
+          listingPrice: listing.price
+        }
+      })
+    })
+
+    const loadAllData = async () => {
       try {
         loading.value = true
-        status.value = null
-        await store.dispatch('refreshValidations')
-        
-        // Enriquecer con info de plantas
-        for (const listing of store.state.allListings) {
-          if (!listing.plantInfo) {
-            try {
-              listing.plantInfo = await soroban.getPlant(listing.plant_id)
-              const votes = await soroban.getPlantVotes(listing.plant_id)
-              listing.votes = votes || 0
-            } catch (e) {
-              console.warn('[Validator] No se pudo cargar info:', e)
-            }
+        console.log('[ValidatorDashboard] Cargando datos desde blockchain...')
+
+        // Cargar todas las plantas
+        const plants = await soroban.getAllPlants()
+        console.log('[ValidatorDashboard] Plantas obtenidas:', plants.length)
+
+        // Cargar todos los listings
+        const listings = await soroban.getAllListings()
+        console.log('[ValidatorDashboard] Listings obtenidos:', listings.length)
+
+        // Obtener votos para cada planta
+        for (const plant of plants) {
+          try {
+            const votes = await soroban.getPlantVotes(plant.id)
+            plant.votes = votes
+            plant.hasVoted = false
+          } catch (error) {
+            console.warn(`[ValidatorDashboard] No se pudieron obtener votos para ${plant.id}:`, error)
+            plant.votes = 0
+            plant.hasVoted = false
           }
         }
+
+        // Si no hay datos, agregar default
+        if (listings.length === 0) {
+          listings.push({
+            plant_id: DEFAULT_VALIDATION_PLANT.id,
+            seller: DEFAULT_VALIDATION_PLANT.seller,
+            price: 20,
+            available: true
+          })
+        }
+
+        if (plants.length === 0 || !plants.find(p => p.id === DEFAULT_VALIDATION_PLANT.id)) {
+          plants.push(DEFAULT_VALIDATION_PLANT)
+        }
+
+        allPlants.value = plants
+        allListings.value = listings
         
-        status.value = { type: 'success', message: '✅ Datos actualizados' }
-      } catch (e) {
-        console.error('[Validator] Error refrescando:', e)
-        status.value = { type: 'danger', message: `❌ Error: ${e.message}` }
+        console.log('[ValidatorDashboard] Carga completa. Plantas:', allPlants.value.length, 'Listings:', allListings.value.length)
+      } catch (error) {
+        console.error('[ValidatorDashboard] Error al cargar datos:', error)
+        // Mostrar datos default aunque falle
+        allPlants.value = [DEFAULT_VALIDATION_PLANT]
+        allListings.value = [{
+          plant_id: DEFAULT_VALIDATION_PLANT.id,
+          seller: DEFAULT_VALIDATION_PLANT.seller,
+          price: 20,
+          available: true
+        }]
+        status.value = {
+          type: 'warning',
+          message: `⚠️ No se pudieron cargar datos de blockchain. Mostrando datos default.`
+        }
       } finally {
         loading.value = false
       }
     }
-
-    const searchAndAdd = async () => {
+    
+    const searchPlant = async () => {
       if (!searchId.value.trim()) return
+      
       try {
         searching.value = true
         status.value = null
-        const plant = await soroban.getPlant(searchId.value.trim())
+        
+        const id = searchId.value.trim()
+        console.log('[ValidatorDashboard] Buscando planta:', id)
+        const plant = await soroban.getPlant(id)
+        
         if (!plant) {
-          status.value = { type: 'warning', message: `⚠️ No encontré "${searchId.value}"` }
+          status.value = {
+            type: 'warning',
+            message: `⚠️ No se encontró planta con ID: ${id}`
+          }
           return
         }
-        status.value = { type: 'success', message: `✅ Planta ${plant.name} encontrada` }
+        
+        // Verificar si ya existe en la lista
+        const exists = allPlants.value.find(p => p.id === plant.id)
+        if (exists) {
+          status.value = {
+            type: 'info',
+            message: `ℹ️ La planta ${plant.id} ya está en la lista`
+          }
+          searchId.value = ''
+          return
+        }
+        
+        // Obtener votos actuales
+        try {
+          const votes = await soroban.getPlantVotes(plant.id)
+          plant.votes = votes
+        } catch (e) {
+          plant.votes = 0
+        }
+        plant.hasVoted = false
+        
+        // Agregar a lista
+        allPlants.value.push(plant)
+        
+        status.value = {
+          type: 'success',
+          message: `✅ Planta ${plant.name} agregada a la lista`
+        }
+        
         searchId.value = ''
-        // El componente ya muestra esta planta en otherValidations si está en venta
-      } catch (e) {
-        console.error('[Validator] Error buscando:', e)
-        status.value = { type: 'danger', message: `❌ Error: ${e.message}` }
+      } catch (error) {
+        console.error('[ValidatorDashboard] Error al buscar planta:', error)
+        status.value = {
+          type: 'danger',
+          message: `❌ Error al buscar: ${error.message}`
+        }
       } finally {
         searching.value = false
       }
     }
-
+    
     const votePlant = async (plantId) => {
       try {
         voting.value = plantId
         status.value = null
+        
+        console.log('[ValidatorDashboard] Votando por:', plantId)
         const result = await soroban.voteForPlant(plantId)
+        
         status.value = {
           type: 'success',
-          message: `✅ Planta ${plantId} validada`,
-          explorerUrl: soroban.getStellarExplorerLink(result.transactionHash)
+          message: `✅ Voto registrado para planta ${plantId}`,
+          explorerUrl: result.transactionHash ? soroban.getStellarExplorerLink(result.transactionHash) : null
         }
-        userHasVoted.value[plantId] = true
-        await refreshAll()
-      } catch (e) {
-        console.error('[Validator] Error votando:', e)
-        status.value = { type: 'danger', message: `❌ Error: ${e.message}` }
+        
+        // Actualizar votos después de votar
+        await refreshVotes(plantId)
+        
+        // Marcar como votado
+        const plant = allPlants.value.find(p => p.id === plantId)
+        if (plant) {
+          plant.hasVoted = true
+        }
+      } catch (error) {
+        console.error('[ValidatorDashboard] Error al votar:', error)
+        status.value = {
+          type: 'danger',
+          message: `❌ Error al votar: ${error.message}`
+        }
       } finally {
         voting.value = null
       }
     }
+    
+    const refreshVotes = async (plantId) => {
+      try {
+        refreshing.value = plantId
+        console.log('[ValidatorDashboard] Actualizando votos para:', plantId)
+        
+        const votes = await soroban.getPlantVotes(plantId)
+        const plant = allPlants.value.find(p => p.id === plantId)
+        
+        if (plant) {
+          plant.votes = votes
+          console.log(`[ValidatorDashboard] Votos actualizados: ${votes}`)
+        }
+      } catch (error) {
+        console.error('[ValidatorDashboard] Error al actualizar votos:', error)
+      } finally {
+        refreshing.value = null
+      }
+    }
 
-    onMounted(async () => {
-      console.log('[ValidatorDashboard] Montado')
-      await refreshAll()
+    const formatAddress = (address) => {
+      if (!address || address.length < 10) return address
+      return `${address.slice(0, 6)}...${address.slice(-4)}`
+    }
+    
+    onMounted(() => {
+      console.log('[ValidatorDashboard] Componente montado')
+      loadAllData()
     })
 
+    // Auto-refresh cuando se activa la vista
+    onActivated(() => {
+      console.log('[ValidatorDashboard] Vista activada, refrescando...')
+      loadAllData()
+    })
+    
     return {
-      loading, searching, searchId, activeTab, voting, status, userHasVoted,
-      userValidations, otherValidations,
-      formatAddress, refreshAll, searchAndAdd, votePlant
+      activeTab,
+      myPlantsInSale,
+      otherPlantsToValidate,
+      voting,
+      refreshing,
+      searching,
+      searchId,
+      status,
+      loading,
+      searchPlant,
+      votePlant,
+      refreshVotes,
+      formatAddress
     }
   }
 }
 </script>
 
 <style scoped>
-.tab-content { animation: fadeIn 0.3s ease-in; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.card { transition: transform 0.2s; }
-.card:hover { transform: translateY(-5px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-.flex-grow-1 { flex-grow: 1; }
-</style>
+.card {
+  height: 100%;
+  transition: transform 0.2s;
+}
 
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.nav-link {
+  cursor: pointer;
+}
+</style>

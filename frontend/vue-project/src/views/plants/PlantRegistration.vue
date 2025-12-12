@@ -95,7 +95,6 @@
 <script>
 import { ref, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useStore } from 'vuex'
 import soroban from '../../soroban/client'
 
 export default {
@@ -103,7 +102,6 @@ export default {
   setup() {
     const router = useRouter()
     const route = useRoute()
-    const store = useStore()
     
     const plant = ref({
       id: '',
@@ -160,16 +158,6 @@ export default {
         transactionHash.value = result.transactionHash || 'pending'
         registeredPlantId.value = result.plantId
         registeredPlantName.value = plant.value.name
-        
-        // Refrescar lista de plantas en el store
-        try {
-          await router.currentRoute.value.params // trigger store refresh
-          const store = useStore()
-          await store.dispatch('refreshAllPlants')
-          console.log('[PlantRegistration] Lista de plantas refrescada')
-        } catch (e) {
-          console.warn('[PlantRegistration] No se pudo refrescar lista de plantas:', e)
-        }
         
         // Limpiar formulario
         plant.value = {
