@@ -130,13 +130,13 @@ async function e2e() {
   console.log('[Vote] Hash:', voteResp.hash, 'Status:', voteResp.status, 'Explorer: https://stellar.expert/explorer/testnet/tx/' + voteResp.hash)
 
   // 4) Listar para venta
-  // El contrato define Listing y keys, método list_for_sale(plant_id: String, seller: Address, price: i128)
+  // El contrato define Listing y keys, asumimos método list_for_sale(plant_id: String, price: i128)
   let listResp
   try {
     listResp = await asAccount(CONFIG.SELLER_SECRET, async (sellerKp) => {
       console.log('\n[Vendedor] Listar planta para venta:', plantId)
       const price = 10000000 // 1 XLM en unidades base (si contrato usa i128 nominal)
-      const unsigned = await buildTx('list_for_sale', [plantId, sellerKp.publicKey(), price], sellerKp.publicKey())
+      const unsigned = await buildTx('list_for_sale', [plantId, price], sellerKp.publicKey())
       const txObj = TransactionBuilder.fromXDR(unsigned, networkPassphrase)
       txObj.sign(sellerKp)
       return submitSigned(txObj.toXDR())
