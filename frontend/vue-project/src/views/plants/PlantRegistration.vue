@@ -208,13 +208,12 @@ export default {
       registerPlant,
       clearSuccess
     }
-      registerPlant,
-      clearSuccess
-    }
   }
 }
-</script>          <style scoped>
-          .container {
-            max-width: 800px;
-          }
-          </style>
+</script>
+
+<style scoped>
+.container {
+  max-width: 800px;
+}
+</style>
