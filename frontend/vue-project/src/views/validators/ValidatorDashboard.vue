@@ -179,46 +179,10 @@
 </template>
 
 <script>
-import { onMounted, ref, computed, onActivated } from 'vue'
+import { onMounted, ref, computed, onActivated, watch } from 'vue'
 import soroban from '../../soroban/client'
 import { useStore } from 'vuex'
-
-// Plantas default para validación
-const DEFAULT_VALIDATION_PLANTS = [
-  {
-    id: 'D-ROMERO-003',
-    name: 'Romero',
-    scientific_name: 'Rosmarinus officinalis',
-    properties: ['Antioxidante', 'Estimulante', 'Digestiva', 'Antimicrobiana'],
-    validated: false,
-    votes: 2,
-    seller: 'GDEFAULTSELLERVALIDATION1234567890ABCDEFG',
-    hasVoted: false,
-    isDefault: true
-  },
-  {
-    id: 'D-CALENDULA-008',
-    name: 'Caléndula',
-    scientific_name: 'Calendula officinalis',
-    properties: ['Cicatrizante', 'Antiinflamatoria', 'Antiséptica', 'Calmante'],
-    validated: false,
-    votes: 1,
-    seller: 'GDEFAULTSELLERVALIDATION2XXXXXXXXXXXXX',
-    hasVoted: false,
-    isDefault: true
-  },
-  {
-    id: 'D-TOMILLO-009',
-    name: 'Tomillo',
-    scientific_name: 'Thymus vulgaris',
-    properties: ['Antiséptico', 'Expectorante', 'Digestivo', 'Antibacteriano'],
-    validated: true,
-    votes: 5,
-    seller: 'GDEFAULTSELLERVALIDATION3YYYYYYYYYYYYYYY',
-    hasVoted: false,
-    isDefault: true
-  }
-]
+import { DEFAULT_CHAIN_SEEDS } from '../../soroban/defaultSeeds'
 
 export default {
   name: 'ValidatorDashboard',
@@ -236,12 +200,11 @@ export default {
 
     const currentUserAddress = computed(() => store.state.publicKey || '')
 
-    // Computed: Mis plantas en venta con validaciones - SIN defaults
+    // Computed: Mis plantas en venta con validaciones (incluye defaults asignadas al usuario)
     const myPlantsInSale = computed(() => {
       if (!currentUserAddress.value) return []
       const myListings = allListings.value.filter(l => 
-        l.seller === currentUserAddress.value &&
-        (!l.plant_id || !l.plant_id.startsWith('D-'))
+        l.seller === currentUserAddress.value
       )
       return myListings.map(listing => {
         const plant = allPlants.value.find(p => p.id === listing.plant_id)
@@ -282,18 +245,16 @@ export default {
         loading.value = true
         console.log('[ValidatorDashboard] Cargando datos desde blockchain...')
 
-        // Cargar todas las plantas (filtrar defaults con D-)
+        // Cargar todas las plantas
         const plants = await soroban.getAllPlants()
-        const realPlants = plants.filter(p => !p.id || !p.id.startsWith('D-'))
-        console.log('[ValidatorDashboard] Plantas obtenidas:', plants.length, 'Reales:', realPlants.length)
+        console.log('[ValidatorDashboard] Plantas obtenidas:', plants.length)
 
-        // Cargar todos los listings (filtrar defaults con D-)
+        // Cargar todos los listings
         const listings = await soroban.getAllListings()
-        const realListings = listings.filter(l => !l.plant_id || !l.plant_id.startsWith('D-'))
-        console.log('[ValidatorDashboard] Listings obtenidos:', listings.length, 'Reales:', realListings.length)
+        console.log('[ValidatorDashboard] Listings obtenidos:', listings.length)
 
         // Obtener votos para cada planta real
-        for (const plant of realPlants) {
+        for (const plant of plants) {
           try {
             const votes = await soroban.getPlantVotes(plant.id)
             plant.votes = votes
@@ -305,26 +266,47 @@ export default {
           }
         }
 
-        // Si no hay datos reales, agregar defaults
-        const combinedPlants = [...realPlants]
-        const combinedListings = [...realListings]
+        const seedPlants = DEFAULT_CHAIN_SEEDS.map(seed => ({
+          id: seed.id,
+          name: seed.name,
+          scientific_name: seed.scientific_name,
+          properties: seed.properties || [],
+          validated: !!seed.validated,
+          votes: seed.votes || 0,
+          seller: seed.listing?.seller,
+          hasVotedBy: seed.hasVotedBy || [],
+          owner: seed.owner,
+          isDefault: true
+        }))
 
-        for (const defaultPlant of DEFAULT_VALIDATION_PLANTS) {
-          if (!combinedPlants.find(p => p.id === defaultPlant.id)) {
-            combinedPlants.push(defaultPlant)
-          }
-          // Agregar listing default correspondiente
-          if (!combinedListings.find(l => l.plant_id === defaultPlant.id)) {
-            combinedListings.push({
-              plant_id: defaultPlant.id,
-              seller: defaultPlant.seller,
-              price: 20,
-              available: true
-            })
+        const seedListings = DEFAULT_CHAIN_SEEDS.map(seed => ({
+          plant_id: seed.id,
+          seller: seed.listing?.seller,
+          price: seed.listing?.price ?? 0,
+          available: seed.listing?.available ?? true,
+          buyer: seed.listing?.buyer,
+          txHash: seed.listing?.txHash,
+          isDefault: true
+        }))
+
+        const combinedPlants = [...plants]
+        for (const seed of seedPlants) {
+          if (!combinedPlants.find(p => p.id === seed.id)) {
+            combinedPlants.push(seed)
           }
         }
 
-        allPlants.value = combinedPlants
+        const combinedListings = [...listings]
+        for (const seedL of seedListings) {
+          if (!combinedListings.find(l => l.plant_id === seedL.plant_id)) {
+            combinedListings.push(seedL)
+          }
+        }
+
+        allPlants.value = combinedPlants.map(p => ({
+          ...p,
+          hasVoted: p.hasVotedBy ? p.hasVotedBy.includes(currentUserAddress.value) : p.hasVoted || false
+        }))
         allListings.value = combinedListings
         
         console.log('[ValidatorDashboard] Carga completa. Plantas:', allPlants.value.length, 'Listings:', allListings.value.length)
@@ -428,6 +410,8 @@ export default {
         if (plant) {
           plant.hasVoted = true
         }
+
+        store.commit('BUMP_DATA_VERSION')
       } catch (error) {
         console.error('[ValidatorDashboard] Error al votar:', error)
         status.value = {
@@ -462,6 +446,12 @@ export default {
       if (!address || address.length < 10) return address
       return `${address.slice(0, 6)}...${address.slice(-4)}`
     }
+
+    // Escuchar invalidaciones globales
+    watch(() => store.state.dataVersion, () => {
+      console.log('[ValidatorDashboard] dataVersion changed, recargando validaciones')
+      loadAllData()
+    })
     
     onMounted(() => {
       console.log('[ValidatorDashboard] Componente montado')

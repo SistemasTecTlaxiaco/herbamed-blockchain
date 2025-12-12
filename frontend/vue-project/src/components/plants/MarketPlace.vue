@@ -140,6 +140,7 @@
                     </li>
                   </ul>
                 </div>
+                <p v-if="listing.buyer"><strong>Comprador:</strong> {{ formatAddress(listing.buyer) }}</p>
               </div>
               <div class="mt-auto">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -150,6 +151,14 @@
                     {{ listing.price }} XLM
                   </span>
                 </div>
+                <a
+                  v-if="listing.txHash"
+                  :href="explorerLink(listing.txHash)"
+                  target="_blank"
+                  class="btn btn-sm btn-outline-secondary w-100 mb-2"
+                >
+                  🔗 Ver transacción
+                </a>
                 <button 
                   class="btn btn-outline-danger w-100" 
                   disabled
@@ -190,6 +199,7 @@
                     </li>
                   </ul>
                 </div>
+                <p v-if="listing.buyer"><strong>Comprador:</strong> {{ formatAddress(listing.buyer) }}</p>
                 <p><strong>Vendedor:</strong> {{ formatAddress(listing.seller) }}</p>
               </div>
               <div class="mt-auto">
@@ -201,6 +211,14 @@
                     {{ listing.price }} XLM
                   </span>
                 </div>
+                <a
+                  v-if="listing.txHash"
+                  :href="explorerLink(listing.txHash)"
+                  target="_blank"
+                  class="btn btn-sm btn-outline-secondary w-100 mb-2"
+                >
+                  🔗 Ver transacción
+                </a>
                 <button 
                   class="btn btn-primary w-100" 
                   @click="buyPlant(listing.plant_id)"
@@ -233,58 +251,10 @@
 </template>
 
 <script>
-import { onMounted, ref, computed, onActivated } from 'vue'
+import { onMounted, ref, computed, onActivated, watch } from 'vue'
 import soroban from '../../soroban/client'
 import { useStore } from 'vuex'
-
-// Plantas default para marketplace
-const DEFAULT_LISTINGS = [
-  {
-    plant_id: 'D-LAVANDA-002',
-    seller: 'GDEFAULTSELLERADDRESS1234567890ABCDEFGHIJKLMNOP',
-    price: 15,
-    available: true,
-    plantInfo: {
-      id: 'D-LAVANDA-002',
-      name: 'Lavanda',
-      scientific_name: 'Lavandula angustifolia',
-      properties: ['Relajante', 'Antiséptica', 'Cicatrizante', 'Aromática'],
-      validated: true,
-      votes: 3
-    },
-    isDefault: true
-  },
-  {
-    plant_id: 'D-JENGIBRE-006',
-    seller: 'GDEFAULTSELLERADDRESS2XXXXXXXXXXXXXXXXXXXXXXXX',
-    price: 20,
-    available: true,
-    plantInfo: {
-      id: 'D-JENGIBRE-006',
-      name: 'Jengibre',
-      scientific_name: 'Zingiber officinale',
-      properties: ['Antiinflamatoria', 'Digestiva', 'Náuseas', 'Antioxidante'],
-      validated: true,
-      votes: 6
-    },
-    isDefault: true
-  },
-  {
-    plant_id: 'D-EUCALIPTO-007',
-    seller: 'GDEFAULTSELLERADDRESS3YYYYYYYYYYYYYYYYYYYYYYYY',
-    price: 12,
-    available: true,
-    plantInfo: {
-      id: 'D-EUCALIPTO-007',
-      name: 'Eucalipto',
-      scientific_name: 'Eucalyptus globulus',
-      properties: ['Descongestionante', 'Expectorante', 'Antiséptico', 'Refrescante'],
-      validated: true,
-      votes: 4
-    },
-    isDefault: true
-  }
-]
+import { DEFAULT_CHAIN_SEEDS } from '../../soroban/defaultSeeds'
 
 export default {
   name: 'MarketPlace',
@@ -302,21 +272,21 @@ export default {
 
     const currentUserAddress = computed(() => store.state.publicKey || '')
 
-    // Computed: Mis plantas sin precio (para listar) - SIN defaults
+    // Computed: Mis plantas sin precio (para listar) - usa owner para defaults y datos reales si vienen con owner
     const myPlantsWithoutPrice = computed(() => {
+      if (!currentUserAddress.value) return []
       const myListedIds = myListings.value.map(l => l.plant_id)
-      // Filtrar: solo plantas reales (no defaults D-)
-      return allPlants.value.filter(p => !myListedIds.includes(p.id) && (!p.id || !p.id.startsWith('D-')))
+      return allPlants.value.filter(p => {
+        const isMine = p.owner ? p.owner === currentUserAddress.value : true
+        const isOtherDefault = p.id && p.id.startsWith('D-') && p.owner && p.owner !== currentUserAddress.value
+        return !myListedIds.includes(p.id) && isMine && !isOtherDefault
+      })
     })
 
-    // Computed: Mis listings - SIN defaults
+    // Computed: Mis listings (incluye defaults asignadas al usuario)
     const myListings = computed(() => {
       if (!currentUserAddress.value) return []
-      // Filtrar: solo mis listings reales (no defaults D-)
-      return allListings.value.filter(l => 
-        l.seller === currentUserAddress.value && 
-        (!l.plant_id || !l.plant_id.startsWith('D-'))
-      )
+      return allListings.value.filter(l => l.seller === currentUserAddress.value)
     })
 
     // Computed: Listings de otros
@@ -330,18 +300,16 @@ export default {
         loading.value = true
         console.log('[MarketPlace] Cargando datos desde blockchain...')
 
-        // Cargar todas las plantas (filtrar defaults con D-)
+        // Cargar todas las plantas
         const plants = await soroban.getAllPlants()
-        const realPlants = plants.filter(p => !p.id || !p.id.startsWith('D-'))
-        console.log('[MarketPlace] Plantas obtenidas:', plants.length, 'Reales:', realPlants.length)
+        console.log('[MarketPlace] Plantas obtenidas:', plants.length)
 
-        // Cargar todos los listings (filtrar defaults con D-)
+        // Cargar todos los listings
         const listings = await soroban.getAllListings()
-        const realListings = listings.filter(l => !l.plant_id || !l.plant_id.startsWith('D-'))
-        console.log('[MarketPlace] Listings obtenidos:', listings.length, 'Reales:', realListings.length)
+        console.log('[MarketPlace] Listings obtenidos:', listings.length)
 
         // Enriquecer listings con info de plantas
-        for (const listingData of realListings) {
+        for (const listingData of listings) {
           try {
             const plantInfo = await soroban.getPlant(listingData.plant_id)
             listingData.plantInfo = plantInfo
@@ -350,15 +318,52 @@ export default {
           }
         }
 
-        // Combinar: listings reales + defaults al final
-        const combinedListings = [...realListings]
-        for (const defaultListing of DEFAULT_LISTINGS) {
+        const seedListings = DEFAULT_CHAIN_SEEDS.map(seed => ({
+          plant_id: seed.id,
+          seller: seed.listing?.seller,
+          price: seed.listing?.price ?? 0,
+          available: seed.listing?.available ?? true,
+          buyer: seed.listing?.buyer,
+          txHash: seed.listing?.txHash,
+          plantInfo: {
+            id: seed.id,
+            name: seed.name,
+            scientific_name: seed.scientific_name,
+            properties: seed.properties || [],
+            validated: !!seed.validated,
+            votes: seed.votes || 0,
+            owner: seed.owner,
+            isDefault: true
+          },
+          isDefault: true
+        }))
+
+        const combinedListings = [...listings]
+        for (const defaultListing of seedListings) {
           if (!combinedListings.find(l => l.plant_id === defaultListing.plant_id)) {
             combinedListings.push(defaultListing)
           }
         }
 
-        allPlants.value = realPlants
+        const seedPlants = DEFAULT_CHAIN_SEEDS.map(seed => ({
+          id: seed.id,
+          name: seed.name,
+          scientific_name: seed.scientific_name,
+          properties: seed.properties || [],
+          validated: !!seed.validated,
+          votes: seed.votes || 0,
+          owner: seed.owner,
+          isDefault: true
+        }))
+
+        const combinedPlants = [...plants]
+        for (const seedPlant of seedPlants) {
+          if (!combinedPlants.find(p => p.id === seedPlant.id)) {
+            combinedPlants.push(seedPlant)
+          }
+        }
+
+        allPlants.value = combinedPlants
         allListings.value = combinedListings
         
         console.log('[MarketPlace] Carga completa. Plantas:', allPlants.value.length, 'Listings:', allListings.value.length)
@@ -455,6 +460,8 @@ export default {
         
         // Recargar datos
         await loadAllData()
+
+        store.commit('BUMP_DATA_VERSION')
         
         // Cambiar a tab de mis listings
         activeTab.value = 'my-listings'
@@ -485,6 +492,8 @@ export default {
         
         // Recargar datos
         await loadAllData()
+
+        store.commit('BUMP_DATA_VERSION')
       } catch (error) {
         console.error('[MarketPlace] Error al comprar:', error)
         status.value = {
@@ -501,8 +510,19 @@ export default {
       return `${address.slice(0, 6)}...${address.slice(-4)}`
     }
 
+    const explorerLink = (hash) => {
+      if (!hash) return '#'
+      return soroban.getStellarExplorerLink(hash)
+    }
+
     onMounted(() => {
       console.log('[MarketPlace] Componente montado')
+      loadAllData()
+    })
+
+    // Escuchar invalidaciones globales
+    watch(() => store.state.dataVersion, () => {
+      console.log('[MarketPlace] dataVersion changed, recargando marketplace')
       loadAllData()
     })
 
@@ -526,7 +546,8 @@ export default {
       searchPlant,
       listPlantForSale,
       buyPlant,
-      formatAddress
+      formatAddress,
+      explorerLink
     }
   }
 }

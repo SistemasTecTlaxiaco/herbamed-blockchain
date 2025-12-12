@@ -334,9 +334,11 @@ async function buildTransactionLocally(operation, sourcePublicKey) {
 }
 
 // High-level helper: submit an operation (object with method/args/contractId)
-export async function submitOperation(operation = {}) {
+export async function submitOperation(operation = {}, options = {}) {
   // Determine signer
-  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  const signerSecret = options.secretKey || null
+  const explicitPublic = options.publicKey || (signerSecret ? Keypair.fromSecret(signerSecret).publicKey() : null)
+  const publicKey = explicitPublic || getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
   if (!publicKey) throw new Error('No public key available to build transaction')
 
   console.log('[submitOperation] Operación:', operation.method, 'Args:', operation.args)
@@ -364,30 +366,39 @@ export async function submitOperation(operation = {}) {
 
   console.log('[submitOperation] XDR sin firmar obtenido, procediendo a firmar...')
 
-  // Sign the unsigned XDR: prefer Freighter
+  // Sign the unsigned XDR: prefer explicit secret, then Freighter, then local key
   let signedXDR = null
-  const api = getFreighterAPI()
-  
-  if (api && typeof api.signTransaction === 'function') {
-    try {
-      console.log('[submitOperation] Firmando con Freighter...')
-      const signed = await api.signTransaction(unsignedXDR, networkPassphrase)
-      signedXDR = typeof signed === 'string' ? signed : (signed && signed.signed_envelope_xdr) ? signed.signed_envelope_xdr : null
-      console.log('[submitOperation] ✅ Firmado con Freighter')
-    } catch (e) {
-      console.warn('[submitOperation] Error firmando con Freighter:', e.message)
-      // fall through to local keypair
-    }
-  }
 
-  if (!signedXDR) {
-    console.log('[submitOperation] Firmando con keypair local...')
-    const kp = getLocalKeypair()
-    if (!kp) throw new Error('No signer available (Freighter or local key)')
+  if (signerSecret) {
+    console.log('[submitOperation] Firmando con secretKey explícito...')
+    const kp = Keypair.fromSecret(signerSecret)
     const txObj = TransactionBuilder.fromXDR(unsignedXDR, networkPassphrase)
     txObj.sign(kp)
     signedXDR = txObj.toXDR()
-    console.log('[submitOperation] ✅ Firmado con keypair local')
+    console.log('[submitOperation] ✅ Firmado con secretKey explícito')
+  } else {
+    const api = getFreighterAPI()
+    if (api && typeof api.signTransaction === 'function') {
+      try {
+        console.log('[submitOperation] Firmando con Freighter...')
+        const signed = await api.signTransaction(unsignedXDR, networkPassphrase)
+        signedXDR = typeof signed === 'string' ? signed : (signed && signed.signed_envelope_xdr) ? signed.signed_envelope_xdr : null
+        console.log('[submitOperation] ✅ Firmado con Freighter')
+      } catch (e) {
+        console.warn('[submitOperation] Error firmando con Freighter:', e.message)
+        // fall through to local keypair
+      }
+    }
+
+    if (!signedXDR) {
+      console.log('[submitOperation] Firmando con keypair local...')
+      const kp = getLocalKeypair()
+      if (!kp) throw new Error('No signer available (Freighter or local key)')
+      const txObj = TransactionBuilder.fromXDR(unsignedXDR, networkPassphrase)
+      txObj.sign(kp)
+      signedXDR = txObj.toXDR()
+      console.log('[submitOperation] ✅ Firmado con keypair local')
+    }
   }
 
   // Submit signed XDR
@@ -420,7 +431,7 @@ function saveLocalPlants(plants) {
   }
 }
 
-export async function registerPlant(plantData) {
+export async function registerPlant(plantData, options = {}) {
   // Register plant in REAL blockchain transaction via contract
   // Contract signature: register_plant(id: String, name: String, scientific_name: String, properties: Vec<String>)
   const plant = plantData || {}
@@ -436,7 +447,7 @@ export async function registerPlant(plantData) {
     contractId: CONTRACT_ADDRESS, 
     method: 'register_plant', 
     args: [id, name, scientificName, properties] 
-  })
+  }, options)
   const status = (resp?.status || 'PENDING').toUpperCase()
   // Aceptar SUCCESS o PENDING como éxito (la transacción está siendo procesada)
   const success = status === 'SUCCESS' || status === 'PENDING'
@@ -763,10 +774,10 @@ export async function getPlantVotes(plantId) {
   }
 }
 
-export async function voteForPlant(plantId) {
+export async function voteForPlant(plantId, options = {}) {
   // Contract signature: vote_for_plant(plant_id: String, validator: Address)
   // El validator debe ser la cuenta conectada
-  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  const publicKey = options.publicKey || getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
   if (!publicKey) throw new Error('No hay cuenta conectada para votar')
   
   console.log('[voteForPlant] Votando por planta:', plantId, 'con validador:', publicKey)
@@ -775,7 +786,7 @@ export async function voteForPlant(plantId) {
     contractId: CONTRACT_ADDRESS, 
     method: 'vote_for_plant', 
     args: [plantId, publicKey] 
-  })
+  }, options)
   
   return { success: true, plantId, transactionHash: resp?.hash || 'pending' }
 }
@@ -900,9 +911,9 @@ export function getConnectedPublicKey() {
   return null
 }
 
-export async function listForSale(plantId, price) {
+export async function listForSale(plantId, price, options = {}) {
   // Contract signature: list_for_sale(plant_id: String, seller: Address, price: i128)
-  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  const publicKey = options.publicKey || getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
   if (!publicKey) throw new Error('No hay cuenta conectada para listar planta')
   
   // Permitir precios decimales convirtiendo a enteros de mínima unidad (2 decimales)
@@ -916,14 +927,14 @@ export async function listForSale(plantId, price) {
     contractId: CONTRACT_ADDRESS, 
     method: 'list_for_sale', 
     args: [plantId, publicKey, priceNum] 
-  })
+  }, options)
   
   return { success: true, plantId, price: priceNum, transactionHash: resp?.hash || 'pending' }
 }
 
-export async function buyListing(plantId) {
+export async function buyListing(plantId, options = {}) {
   // Contract signature: buy_listing(plant_id: String, buyer: Address)
-  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  const publicKey = options.publicKey || getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
   if (!publicKey) throw new Error('No hay cuenta conectada para comprar')
   
   console.log('[buyListing] Comprando planta:', plantId, 'comprador:', publicKey)
@@ -932,7 +943,7 @@ export async function buyListing(plantId) {
     contractId: CONTRACT_ADDRESS, 
     method: 'buy_listing', 
     args: [plantId, publicKey] 
-  })
+  }, options)
   
   return { success: true, plantId, transactionHash: resp?.hash || 'pending' }
 }

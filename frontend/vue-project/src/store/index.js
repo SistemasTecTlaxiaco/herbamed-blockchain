@@ -7,7 +7,8 @@ export default createStore({
     publicKey: null,
     balance: null,
     isAuthenticated: false,
-    authMethod: null // 'local-key', 'freighter', 'walletconnect'
+    authMethod: null, // 'local-key', 'freighter', 'walletconnect'
+    dataVersion: 0 // global refresh flag
   },
   mutations: {
     SET_PUBLIC_KEY(state, pk) {
@@ -36,6 +37,9 @@ export default createStore({
     },
     SET_VALIDATORS(state, validators) {
       state.validators = validators
+    },
+    BUMP_DATA_VERSION(state) {
+      state.dataVersion += 1
     }
   },
   actions: {

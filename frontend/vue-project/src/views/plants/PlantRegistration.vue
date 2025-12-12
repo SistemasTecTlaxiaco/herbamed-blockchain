@@ -95,6 +95,7 @@
 <script>
 import { ref, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useStore } from 'vuex'
 import soroban from '../../soroban/client'
 
 export default {
@@ -102,6 +103,7 @@ export default {
   setup() {
     const router = useRouter()
     const route = useRoute()
+    const store = useStore()
     
     const plant = ref({
       id: '',
@@ -172,15 +174,13 @@ export default {
           window.scrollTo({ top: 0, behavior: 'smooth' })
         }, 100)
 
+        // Notificar al resto de vistas que hay datos nuevos
+        store.commit('BUMP_DATA_VERSION')
+
         // Redirigir a la lista de plantas después de 3 segundos
         setTimeout(() => {
           console.log('[PlantRegistration] Redirigiendo a lista de plantas...')
-          router.push('/plants').then(() => {
-            // Forzar recarga de la lista después de navegar
-            if (typeof window !== 'undefined' && window.location) {
-              window.location.reload()
-            }
-          })
+          router.push('/plants')
         }, 3000)
         
       } catch (error) {

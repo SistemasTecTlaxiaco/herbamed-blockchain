@@ -84,8 +84,10 @@
 </template>
 
 <script>
-import { onMounted, ref, onActivated } from 'vue'
+import { onMounted, ref, onActivated, watch } from 'vue'
+import { useStore } from 'vuex'
 import soroban from '../../soroban/client'
+import { DEFAULT_CHAIN_SEEDS } from '../../soroban/defaultSeeds'
 
 // Plantas default medicinales reales para demostración
 const DEFAULT_PLANTS = [
@@ -139,6 +141,7 @@ const DEFAULT_PLANTS = [
 export default {
   name: 'PlantList',
   setup() {
+    const store = useStore()
     const plants = ref([])
     const loading = ref(false)
     const searching = ref(false)
@@ -237,9 +240,20 @@ export default {
           }
         }
 
-        // Combinar: plantas reales primero + defaults al final (evitar duplicados)
+        // Combinar: plantas reales primero + defaults locales + semillas on-chain simuladas
         const combined = [...enriched]
-        for (const defaultPlant of DEFAULT_PLANTS) {
+
+        const seedPlants = DEFAULT_CHAIN_SEEDS.map(seed => ({
+          id: seed.id,
+          name: seed.name,
+          scientific_name: seed.scientific_name,
+          properties: seed.properties || [],
+          validated: !!seed.validated,
+          votes: seed.votes || 0,
+          isDefault: true
+        }))
+
+        for (const defaultPlant of [...seedPlants, ...DEFAULT_PLANTS]) {
           if (!combined.find(p => p.id === defaultPlant.id)) {
             combined.push(defaultPlant)
           }
@@ -262,6 +276,12 @@ export default {
 
     onMounted(() => {
       console.log('[PlantList] Componente montado')
+      loadPlantsFromChain()
+    })
+
+    // Escuchar invalidaciones globales (registro/listado/compra/validación)
+    watch(() => store.state.dataVersion, () => {
+      console.log('[PlantList] dataVersion changed, reloading plants')
       loadPlantsFromChain()
     })
 
