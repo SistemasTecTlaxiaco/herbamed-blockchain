@@ -763,6 +763,23 @@ export async function getPlantVotes(plantId) {
   }
 }
 
+export async function addValidator(validatorAddress) {
+  // Contract signature: add_validator(validator: Address)
+  const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+  if (!publicKey) throw new Error('No hay cuenta conectada para añadir validador')
+  
+  const address = validatorAddress || publicKey
+  console.log('[addValidator] Añadiendo validador:', address)
+  
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'add_validator', 
+    args: [address] 
+  })
+  
+  return { success: true, validatorAddress: address, transactionHash: resp?.hash || 'pending' }
+}
+
 export async function voteForPlant(plantId) {
   // Contract signature: vote_for_plant(plant_id: String, validator: Address)
   // El validator debe ser la cuenta conectada
@@ -1019,6 +1036,7 @@ export default {
   getAllPlants,
   getAllListings,
   getPlant,
+  addValidator,
   voteForPlant,
   listForSale,
   buyListing,

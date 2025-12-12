@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useStore } from 'vuex'
 import PlantList from '../views/plants/PlantList.vue'
 import PlantRegistration from '../views/plants/PlantRegistration.vue'
+import PlantValidation from '../views/plants/PlantValidation.vue'
 import ValidatorDashboard from '../views/validators/ValidatorDashboard.vue'
 import TestFunctions from '../views/plants/TestFunctions.vue'
 import Login from '../components/Login.vue'
@@ -35,6 +36,12 @@ const router = createRouter({
       path: '/plants/register',
       name: 'plant-registration',
       component: PlantRegistration,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/plants/validation',
+      name: 'plant-validation',
+      component: PlantValidation,
       meta: { requiresAuth: true }
     },
     {

@@ -2,113 +2,157 @@
   <div class="container mt-4">
     <h2>🛒 Marketplace de Plantas Medicinales</h2>
     
-    <!-- Búsqueda de plantas/listings -->
+    <!-- Búsqueda global -->
     <div class="card mb-4">
       <div class="card-body">
-        <h5>Buscar Planta en Venta</h5>
+        <h5>🔍 Buscar Planta por ID</h5>
         <div class="input-group">
           <input 
             v-model="searchId" 
             type="text" 
             class="form-control" 
             placeholder="ID de planta (ej: 001, ALBACA-001)"
+            @keyup.enter="searchPlant"
           />
           <button 
             class="btn btn-primary" 
-            @click="searchListing"
+            @click="searchPlant"
             :disabled="searching || !searchId"
           >
-            {{ searching ? '🔍 Buscando...' : '🔍 Buscar' }}
+            {{ searching ? '🔍 Buscando...' : '�� Buscar' }}
           </button>
         </div>
         <small class="text-muted">
-          Ingresa el ID de una planta para ver si está en venta
+          Busca plantas registradas o en venta. Te indicará en qué menú se encuentra.
         </small>
       </div>
     </div>
     
+    <!-- Tabs para dos menús -->
+    <ul class="nav nav-tabs mb-3" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button 
+          class="nav-link" 
+          :class="{ active: activeTab === 'available' }"
+          @click="activeTab = 'available'"
+          type="button"
+        >
+          📦 Plantas Disponibles ({{ availablePlants.length }})
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button 
+          class="nav-link" 
+          :class="{ active: activeTab === 'forSale' }"
+          @click="activeTab = 'forSale'"
+          type="button"
+        >
+          🛒 En Venta ({{ listings.length }})
+        </button>
+      </li>
+    </ul>
+    
     <div v-if="loading" class="alert alert-info">
-      <h5>⏳ Cargando listings desde blockchain...</h5>
+      <h5>⏳ Cargando desde blockchain...</h5>
     </div>
     
-    <div v-else-if="listings.length === 0" class="alert alert-info">
-      <h5>📭 No hay plantas en el marketplace</h5>
-      <p class="mb-0">Usa el buscador arriba para encontrar plantas en venta.</p>
-    </div>
-    
-    <div class="row mt-4">
-      <div class="col-md-6 mb-4" v-for="listing in listings" :key="listing.plant_id">
-        <div class="card h-100">
-          <div class="card-body d-flex flex-column">
-            <h5 class="card-title">🌿 {{ listing.plantInfo?.name || listing.plant_id }}</h5>
-            <h6 class="card-subtitle mb-2 text-muted">
-              {{ listing.plantInfo?.scientific_name || 'Planta medicinal' }}
-            </h6>
-            <div class="card-text flex-grow-1">
-              <p><small class="text-muted">ID: {{ listing.plant_id }}</small></p>
-              <div v-if="listing.plantInfo?.properties" class="mb-2">
-                <strong>Propiedades:</strong>
-                <ul>
-                  <li v-for="(prop, idx) in listing.plantInfo.properties.slice(0, 3)" :key="idx">
-                    {{ prop }}
-                  </li>
-                </ul>
+    <!-- Tab Content: Plantas Disponibles -->
+    <div v-if="activeTab === 'available'">
+      <div v-if="availablePlants.length === 0 && !loading" class="alert alert-info">
+        <h5>📭 No hay plantas disponibles</h5>
+        <p class="mb-0">Las plantas registradas sin listing aparecerán aquí.</p>
+      </div>
+      
+      <div class="row mt-4">
+        <div class="col-md-6 mb-4" v-for="plant in availablePlants" :key="plant.id">
+          <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+              <h5 class="card-title">🌿 {{ plant.name }}</h5>
+              <h6 class="card-subtitle mb-2 text-muted">{{ plant.scientific_name }}</h6>
+              <div class="card-text flex-grow-1">
+                <p><small class="text-muted">ID: {{ plant.id }}</small></p>
+                <div v-if="plant.properties && plant.properties.length > 0">
+                  <p class="mb-1"><strong>Propiedades:</strong></p>
+                  <ul class="mb-2">
+                    <li v-for="(prop, idx) in plant.properties.slice(0, 3)" :key="idx">
+                      {{ prop }}
+                    </li>
+                  </ul>
+                </div>
               </div>
-              <p><strong>Vendedor:</strong> {{ formatAddress(listing.seller) }}</p>
-            </div>
-            <div class="mt-auto">
-              <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="badge" :class="listing.available ? 'bg-success' : 'bg-secondary'">
-                  {{ listing.available ? '✅ Disponible' : '❌ Vendida' }}
-                </span>
-                <span class="fs-5 fw-bold text-primary">
-                  {{ listing.price }} XLM
-                </span>
+              <div class="mt-auto">
+                <div class="badge bg-info mb-2">Sin precio asignado</div>
+                <div class="input-group mb-2">
+                  <input 
+                    v-model.number="plant.tempPrice" 
+                    type="number" 
+                    class="form-control form-control-sm" 
+                    placeholder="Precio (XLM)"
+                    min="0"
+                    step="0.1"
+                  />
+                </div>
+                <button 
+                  class="btn btn-success btn-sm w-100" 
+                  @click="putForSale(plant)"
+                  :disabled="listing === plant.id || !plant.tempPrice || plant.tempPrice <= 0"
+                >
+                  {{ listing === plant.id ? '⏳ Listando...' : '📦 Poner en venta' }}
+                </button>
               </div>
-              <button 
-                class="btn btn-primary w-100" 
-                @click="buyListing(listing.plant_id)"
-                :disabled="!listing.available || buying === listing.plant_id"
-              >
-                {{ buying === listing.plant_id ? '⏳ Comprando...' : listing.available ? '🛒 Comprar' : '❌ No disponible' }}
-              </button>
             </div>
           </div>
         </div>
       </div>
     </div>
     
-    <!-- Crear nuevo listing -->
-    <div class="card mt-4">
-      <div class="card-body">
-        <h5>📦 Vender una Planta</h5>
-        <div class="row g-3">
-          <div class="col-md-8">
-            <input 
-              v-model="newListing.plantId" 
-              type="text" 
-              class="form-control" 
-              placeholder="ID de planta a vender"
-            />
-          </div>
-          <div class="col-md-4">
-            <input 
-              v-model.number="newListing.price" 
-              type="number" 
-              class="form-control" 
-              placeholder="Precio (XLM)"
-              min="0"
-              step="0.1"
-            />
+    <!-- Tab Content: Plantas en Venta -->
+    <div v-if="activeTab === 'forSale'">
+      <div v-if="listings.length === 0 && !loading" class="alert alert-info">
+        <h5>�� No hay plantas en venta</h5>
+        <p class="mb-0">Las plantas con listing aparecerán aquí.</p>
+      </div>
+      
+      <div class="row mt-4">
+        <div class="col-md-6 mb-4" v-for="listingItem in listings" :key="listingItem.plant_id">
+          <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+              <h5 class="card-title">🌿 {{ listingItem.plantInfo?.name || listingItem.plant_id }}</h5>
+              <h6 class="card-subtitle mb-2 text-muted">
+                {{ listingItem.plantInfo?.scientific_name || 'Planta medicinal' }}
+              </h6>
+              <div class="card-text flex-grow-1">
+                <p><small class="text-muted">ID: {{ listingItem.plant_id }}</small></p>
+                <div v-if="listingItem.plantInfo?.properties">
+                  <p class="mb-1"><strong>Propiedades:</strong></p>
+                  <ul class="mb-2">
+                    <li v-for="(prop, idx) in listingItem.plantInfo.properties.slice(0, 3)" :key="idx">
+                      {{ prop }}
+                    </li>
+                  </ul>
+                </div>
+                <p><strong>Vendedor:</strong> {{ formatAddress(listingItem.seller) }}</p>
+              </div>
+              <div class="mt-auto">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge" :class="listingItem.available ? 'bg-success' : 'bg-secondary'">
+                    {{ listingItem.available ? '✅ Disponible' : '❌ Vendida' }}
+                  </span>
+                  <span class="fs-5 fw-bold text-primary">
+                    {{ formatPrice(listingItem.price) }} XLM
+                  </span>
+                </div>
+                <button 
+                  class="btn btn-primary w-100" 
+                  @click="buyListingHandler(listingItem.plant_id)"
+                  :disabled="!listingItem.available || buying === listingItem.plant_id"
+                >
+                  {{ buying === listingItem.plant_id ? '⏳ Comprando...' : listingItem.available ? '🛒 Comprar' : '❌ No disponible' }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-        <button 
-          class="btn btn-success w-100 mt-3" 
-          @click="createListing"
-          :disabled="listing || !newListing.plantId || !newListing.price"
-        >
-          {{ listing ? '⏳ Creando listing...' : '📦 Poner en venta' }}
-        </button>
       </div>
     </div>
     
@@ -130,31 +174,44 @@
 </template>
 
 <script>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import soroban from '../../soroban/client'
 
 export default {
   name: 'MarketPlace',
   setup() {
+    const activeTab = ref('available')
+    const allPlants = ref([])
     const listings = ref([])
     const buying = ref(null)
-    const listing = ref(false)
+    const listing = ref(null)
     const searching = ref(false)
     const searchId = ref('')
-    const newListing = ref({ plantId: '', price: 0 })
     const status = ref(null)
     const loading = ref(false)
     
-    // Cargar todos los listings desde el contrato
-    const loadListings = async () => {
+    // Plantas disponibles = plantas registradas que NO tienen listing
+    const availablePlants = computed(() => {
+      const listingIds = new Set(listings.value.map(l => l.plant_id))
+      return allPlants.value.filter(p => !listingIds.has(p.id))
+    })
+    
+    // Cargar todas las plantas y todos los listings
+    const loadAllData = async () => {
       try {
         loading.value = true
-        console.log('[MarketPlace] Cargando listings desde el contrato...')
+        console.log('[MarketPlace] Cargando plantas y listings...')
         
+        // Cargar plantas
+        const plants = await soroban.getAllPlants()
+        console.log('[MarketPlace] Plantas obtenidas:', plants.length)
+        allPlants.value = plants
+        
+        // Cargar listings
         const allListings = await soroban.getAllListings()
-        console.log('[MarketPlace] Listings obtenidos:', allListings)
+        console.log('[MarketPlace] Listings obtenidos:', allListings.length)
         
-        // Enriquecer con info de plantas
+        // Enriquecer listings con info de plantas
         for (const listingData of allListings) {
           try {
             const plantInfo = await soroban.getPlant(listingData.plant_id)
@@ -165,65 +222,72 @@ export default {
         }
         
         listings.value = allListings
-        console.log('[MarketPlace] Total listings cargados:', listings.value.length)
+        console.log('[MarketPlace] Datos cargados:', allPlants.value.length, 'plantas,', listings.value.length, 'listings')
       } catch (error) {
-        console.error('[MarketPlace] Error al cargar listings:', error)
+        console.error('[MarketPlace] Error al cargar datos:', error)
         status.value = {
           type: 'danger',
-          message: `❌ Error al cargar listings: ${error.message}`
+          message: `❌ Error al cargar datos: ${error.message}`
         }
       } finally {
         loading.value = false
       }
     }
     
-    const searchListing = async () => {
+    const searchPlant = async () => {
       if (!searchId.value.trim()) return
       
       try {
         searching.value = true
         status.value = null
         
-        console.log('[MarketPlace] Buscando listing:', searchId.value)
-        const listingData = await soroban.getListing(searchId.value.trim())
+        const plantId = searchId.value.trim()
+        console.log('[MarketPlace] Buscando:', plantId)
         
-        if (!listingData) {
+        // Buscar en plantas disponibles
+        let foundInAvailable = availablePlants.value.find(p => p.id === plantId)
+        if (foundInAvailable) {
           status.value = {
-            type: 'warning',
-            message: `⚠️ No hay listing para la planta: ${searchId.value}`
+            type: 'success',
+            message: `✅ Planta "${foundInAvailable.name}" encontrada en "Plantas Disponibles"`
           }
+          activeTab.value = 'available'
+          searchId.value = ''
           return
         }
         
-        // Verificar si ya existe
-        const exists = listings.value.find(l => l.plant_id === listingData.plant_id)
-        if (exists) {
+        // Buscar en listings
+        let foundInListings = listings.value.find(l => l.plant_id === plantId)
+        if (foundInListings) {
           status.value = {
-            type: 'info',
-            message: `ℹ️ El listing ${listingData.plant_id} ya está en la lista`
+            type: 'success',
+            message: `✅ Planta "${foundInListings.plantInfo?.name || plantId}" encontrada en "En Venta"`
           }
+          activeTab.value = 'forSale'
+          searchId.value = ''
           return
         }
         
-        // Intentar obtener info de la planta
-        try {
-          const plantInfo = await soroban.getPlant(listingData.plant_id)
-          listingData.plantInfo = plantInfo
-        } catch (error) {
-          console.warn('[MarketPlace] No se pudo obtener info de planta:', error)
+        // Intentar buscar en blockchain
+        const plant = await soroban.getPlant(plantId)
+        if (plant) {
+          allPlants.value.push(plant)
+          status.value = {
+            type: 'success',
+            message: `✅ Planta "${plant.name}" encontrada y agregada a "Plantas Disponibles"`
+          }
+          activeTab.value = 'available'
+          searchId.value = ''
+          return
         }
-        
-        // Agregar a lista
-        listings.value.push(listingData)
         
         status.value = {
-          type: 'success',
-          message: `✅ Listing encontrado: ${listingData.plant_id} - ${listingData.price} XLM`
+          type: 'warning',
+          message: `⚠️ No se encontró planta con ID: ${plantId}`
         }
-        
         searchId.value = ''
       } catch (error) {
-        console.error('[MarketPlace] Error al buscar listing:', error)
+        console.error('[MarketPlace] Error al buscar:', error)
         status.value = {
           type: 'danger',
           message: `❌ Error: ${error.message}`
@@ -233,37 +297,35 @@ export default {
       }
     }
     
-    const createListing = async () => {
+    const putForSale = async (plant) => {
       try {
-        listing.value = true
+        listing.value = plant.id
         status.value = null
         
-        console.log('[MarketPlace] Creando listing:', newListing.value)
-        const result = await soroban.listForSale(newListing.value.plantId, newListing.value.price)
+        console.log('[MarketPlace] Listando planta:', plant.id, 'precio:', plant.tempPrice)
+        const result = await soroban.listForSale(plant.id, plant.tempPrice)
         
         status.value = {
           type: 'success',
-          message: `✅ Planta ${newListing.value.plantId} puesta en venta por ${newListing.value.price} XLM`,
+          message: `✅ Planta ${plant.name} puesta en venta por ${plant.tempPrice} XLM`,
           explorerUrl: soroban.getStellarExplorerLink(result.transactionHash)
         }
         
-        // Recargar listings desde el contrato
-        await loadListings()
-        
-        // Reset form
-        newListing.value = { plantId: '', price: 0 }
+        // Recargar datos
+        await loadAllData()
+        activeTab.value = 'forSale'
       } catch (error) {
-        console.error('[MarketPlace] Error al crear listing:', error)
+        console.error('[MarketPlace] Error al listar:', error)
         status.value = {
           type: 'danger',
-          message: `❌ Error al crear listing: ${error.message}`
+          message: `❌ Error al listar: ${error.message}`
         }
       } finally {
-        listing.value = false
+        listing.value = null
       }
     }
     
-    const buyListing = async (plantId) => {
+    const buyListingHandler = async (plantId) => {
       try {
         buying.value = plantId
         status.value = null
@@ -277,8 +339,8 @@ export default {
           explorerUrl: soroban.getStellarExplorerLink(result.transactionHash)
         }
         
-        // Recargar listings desde el contrato
-        await loadListings()
+        // Recargar datos
+        await loadAllData()
       } catch (error) {
         console.error('[MarketPlace] Error al comprar:', error)
         status.value = {
@@ -295,25 +357,34 @@ export default {
       return `${address.slice(0, 6)}...${address.slice(-4)}`
     }
     
+    const formatPrice = (price) => {
+      // El precio está en unidades mínimas (centavos), convertir a XLM
+      const priceFloat = typeof price === 'number' ? price : parseFloat(String(price))
+      return (priceFloat / 100).toFixed(2)
+    }
+    
     onMounted(() => {
       console.log('[MarketPlace] Componente montado')
-      loadListings()
+      loadAllData()
     })
     
     return {
+      activeTab,
+      allPlants,
+      availablePlants,
       listings,
       buying,
       listing,
       searching,
       searchId,
-      newListing,
       status,
       loading,
-      loadListings,
-      searchListing,
-      createListing,
-      buyListing,
-      formatAddress
+      loadAllData,
+      searchPlant,
+      putForSale,
+      buyListingHandler,
+      formatAddress,
+      formatPrice
     }
   }
 }
