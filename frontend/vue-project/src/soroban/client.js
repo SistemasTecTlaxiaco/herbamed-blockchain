@@ -49,28 +49,6 @@ async function buildUnsignedXDR(operation, publicKey) {
   return null
 }
 
-// Helper para normalizar listings del scVal retornado por el contrato
-function normalizeListing(listing) {
-  if (!listing) return null
-  // El struct Listing en Rust tiene: seller, plant_id, price, available
-  // scValToNative podría retornarlos como objeto o array
-  if (Array.isArray(listing)) {
-    return {
-      seller: listing[0],
-      plant_id: listing[1],
-      price: listing[2],
-      available: listing[3]
-    }
-  }
-  // Si ya es un objeto, normalizar
-  return {
-    seller: listing.seller,
-    plant_id: listing.plant_id,
-    price: listing.price,
-    available: listing.available
-  }
-}
-
 function getLocalKeypair() {
   // prefer SECRET_KEY from env-like config, otherwise localStorage secret
   try {
@@ -487,50 +465,6 @@ export async function initContract() {
   }
 }
 
-export async function getValidators() {
-  // Query contract for validators list (read-only)
-  try {
-    console.log('[getValidators] Consultando validadores...')
-    
-    const server = new rpc.Server(RPC_URL)
-    const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
-    
-    if (!publicKey) {
-      publicKey = Keypair.random().publicKey()
-    }
-    
-    const account = await server.getAccount(publicKey)
-    const contractOperation = contract.call('get_validators')
-    
-    const txBuilder = new TransactionBuilder(account, {
-      fee: stellar.BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contractOperation)
-      .setTimeout(30)
-    
-    const transaction = txBuilder.build()
-    const simulateResponse = await server.simulateTransaction(transaction)
-    
-    if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[getValidators] Error:', simulateResponse)
-      throw new Error(String(simulateResponse?.error || 'Simulation error'))
-    }
-    
-    if (!simulateResponse.result || !simulateResponse.result.retval) {
-      return []
-    }
-    
-    const validators = scValToNative(simulateResponse.result.retval)
-    console.log('[getValidators] Validadores:', validators)
-    return Array.isArray(validators) ? validators : []
-  } catch (e) {
-    console.error('[getValidators] Error:', e)
-    throw e
-  }
-}
-
 // Helper to get Stellar Expert link
 export function getStellarExplorerLink(txHash) {
   const network = NETWORK === 'testnet' ? 'testnet' : 'public'
@@ -739,47 +673,42 @@ export async function getAllListings() {
       .setTimeout(30)
     
     const transaction = txBuilder.build()
-    console.log('[getAllListings] Simulando transacción...')
     const simulateResponse = await server.simulateTransaction(transaction)
-    console.log('[getAllListings] Respuesta simulación:', simulateResponse)
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[getAllListings] Error en simulación:', simulateResponse)
+      console.error('[getAllListings] Error:', simulateResponse)
       try {
         const msg = String(simulateResponse?.error || '')
         if (msg.includes('MissingValue')) {
-          console.warn('[getAllListings] MissingValue detectado - contrato no inicializado')
-          console.warn('[getAllListings] Debes inicializar el contrato primero llamando a initContract()')
-          console.warn('[getAllListings] Retornando array vacío por ahora')
-          return []
+          console.warn('[getAllListings] MissingValue detectado, ejecutando init y reintentando...')
+          await initContract()
+          const retrySim = await server.simulateTransaction(transaction)
+          if (rpc.Api.isSimulationError(retrySim)) {
+            console.error('[getAllListings] Error tras init:', retrySim)
+            return []
+          }
+          if (!retrySim.result || !retrySim.result.retval) return []
+          const listingsRetry = scValToNative(retrySim.result.retval)
+          return Array.isArray(listingsRetry) ? listingsRetry : []
         }
       } catch (_) {}
       return []
     }
     
     if (!simulateResponse.result || !simulateResponse.result.retval) {
-      console.warn('[getAllListings] No hay retval en la respuesta')
       return []
     }
     
     try {
       const listings = scValToNative(simulateResponse.result.retval)
-      console.log('[getAllListings] Listings convertidos:', listings)
-      console.log('[getAllListings] Total listings:', Array.isArray(listings) ? listings.length : 0)
-      
-      // Normalizar cada listing
-      if (Array.isArray(listings)) {
-        const normalized = listings.map(l => normalizeListing(l))
-        console.log('[getAllListings] Listings normalizados:', normalized)
-        return normalized
-      }
-      return []
+      console.log('[getAllListings] Listings cargados:', Array.isArray(listings) ? listings.length : 0)
+      return Array.isArray(listings) ? listings : []
     } catch (e) {
-      console.error('[getAllListings] Error al convertir scVal:', e)
+      console.error('[getAllListings] Error al convertir:', e)
       return []
     }
   } catch (e) {
-    console.error('[getAllListings] Error general:', e.message || e)
+    console.error('[getAllListings] Error:', e)
     return []
   }
 }
@@ -976,20 +905,20 @@ export async function listForSale(plantId, price) {
   const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
   if (!publicKey) throw new Error('No hay cuenta conectada para listar planta')
   
-  // Validar y usar precio como número directamente (sin conversión decimal)
-  const priceNum = typeof price === 'number' ? price : parseFloat(String(price))
-  if (isNaN(priceNum) || priceNum <= 0) throw new Error('Precio inválido')
+  // Permitir precios decimales convirtiendo a enteros de mínima unidad (2 decimales)
+  const priceFloat = typeof price === 'number' ? price : parseFloat(String(price))
+  if (isNaN(priceFloat) || priceFloat <= 0) throw new Error('Precio inválido')
+  const priceNum = Math.round(priceFloat * 100) // usar 2 decimales como unidades mínimas
   
   console.log('[listForSale] Listando planta:', plantId, 'precio:', priceNum, 'vendedor:', publicKey)
   
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'list_for_sale', 
-    args: [plantId, publicKey, Math.floor(priceNum)] 
+    args: [plantId, publicKey, priceNum] 
   })
   
-  console.log('[listForSale] Respuesta de contrato:', resp)
-  return { success: true, plantId, price: Math.floor(priceNum), transactionHash: resp?.hash || 'pending' }
+  return { success: true, plantId, price: priceNum, transactionHash: resp?.hash || 'pending' }
 }
 
 export async function buyListing(plantId) {
@@ -1086,7 +1015,6 @@ export default {
   submitTx,
   submitOperation,
   initContract,
-  getValidators,
   registerPlant,
   getAllPlants,
   getAllListings,

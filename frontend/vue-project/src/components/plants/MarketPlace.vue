@@ -185,10 +185,7 @@ export default {
         status.value = null
         
         console.log('[MarketPlace] Buscando listing:', searchId.value)
-        
-        // Obtener todos los listings y filtrar por plant_id
-        const allListings = await soroban.getAllListings()
-        const listingData = allListings.find(l => l.plant_id === searchId.value.trim())
+        const listingData = await soroban.getListing(searchId.value.trim())
         
         if (!listingData) {
           status.value = {
@@ -198,7 +195,7 @@ export default {
           return
         }
         
-        // Verificar si ya existe en la lista mostrada
+        // Verificar si ya existe
         const exists = listings.value.find(l => l.plant_id === listingData.plant_id)
         if (exists) {
           status.value = {
@@ -298,44 +295,9 @@ export default {
       return `${address.slice(0, 6)}...${address.slice(-4)}`
     }
     
-    const ensureContractInitialized = async () => {
-      try {
-        console.log('[MarketPlace] Verificando si contrato está inicializado...')
-        // Intentar obtener validadores como prueba de inicialización
-        const validators = await soroban.getValidators()
-        if (validators && validators.length >= 0) {
-          console.log('[MarketPlace] ✅ Contrato ya inicializado')
-          return true
-        }
-      } catch (error) {
-        const msg = String(error?.message || error || '')
-        if (msg.includes('MissingValue')) {
-          console.warn('[MarketPlace] ⚠️ Contrato no inicializado, ejecutando init...')
-          try {
-            await soroban.initContract()
-            console.log('[MarketPlace] ✅ Contrato inicializado exitosamente')
-            // Esperar un momento para que se confirme
-            await new Promise(resolve => setTimeout(resolve, 2000))
-            return true
-          } catch (initError) {
-            console.error('[MarketPlace] ❌ Error al inicializar contrato:', initError)
-            status.value = {
-              type: 'warning',
-              message: '⚠️ El contrato blockchain necesita inicialización. Por favor, recarga la página en unos segundos.'
-            }
-            return false
-          }
-        }
-      }
-      return true
-    }
-    
-    onMounted(async () => {
+    onMounted(() => {
       console.log('[MarketPlace] Componente montado')
-      const initialized = await ensureContractInitialized()
-      if (initialized) {
-        loadListings()
-      }
+      loadListings()
     })
     
     return {
