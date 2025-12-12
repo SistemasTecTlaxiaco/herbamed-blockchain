@@ -4,6 +4,11 @@
   "framework": "vite",
   "installCommand": "cd frontend/vue-project && npm install",
   "devCommand": "cd frontend/vue-project && npm run dev",
+  "env": {
+    "VITE_SOROBAN_RPC_URL": "https://soroban-testnet.stellar.org",
+    "VITE_CONTRACT_ADDRESS": "CA5C74SZ5XHXENOVQ454WQN66PMVSPMIZV5FYUR6OWDUQKC4PKOOXNPR",
+    "VITE_SOROBAN_NETWORK": "testnet"
+  },
   "rewrites": [
     {
       "source": "/(.*)",
@@ -11,6 +16,15 @@
     }
   ],
   "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [
@@ -25,6 +39,10 @@
         {
           "key": "Access-Control-Allow-Headers",
           "value": "X-Requested-With, Content-Type, Authorization"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
         }
       ]
     }
