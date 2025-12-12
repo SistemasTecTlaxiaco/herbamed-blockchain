@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "cd frontend/vue-project && npm run dev",
     "build": "cd frontend/vue-project && npm install && npm run build",
-    "preview": "cd frontend/vue-project && npm run preview"
+    "preview": "cd frontend/vue-project && npm run preview",
+    "install": "cd frontend/vue-project && npm install"
   },
   "keywords": [
     "blockchain",
