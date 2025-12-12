@@ -185,7 +185,10 @@ export default {
         status.value = null
         
         console.log('[MarketPlace] Buscando listing:', searchId.value)
-        const listingData = await soroban.getListing(searchId.value.trim())
+        
+        // Obtener todos los listings y filtrar por plant_id
+        const allListings = await soroban.getAllListings()
+        const listingData = allListings.find(l => l.plant_id === searchId.value.trim())
         
         if (!listingData) {
           status.value = {
@@ -195,7 +198,7 @@ export default {
           return
         }
         
-        // Verificar si ya existe
+        // Verificar si ya existe en la lista mostrada
         const exists = listings.value.find(l => l.plant_id === listingData.plant_id)
         if (exists) {
           status.value = {

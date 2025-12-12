@@ -49,6 +49,28 @@ async function buildUnsignedXDR(operation, publicKey) {
   return null
 }
 
+// Helper para normalizar listings del scVal retornado por el contrato
+function normalizeListing(listing) {
+  if (!listing) return null
+  // El struct Listing en Rust tiene: seller, plant_id, price, available
+  // scValToNative podría retornarlos como objeto o array
+  if (Array.isArray(listing)) {
+    return {
+      seller: listing[0],
+      plant_id: listing[1],
+      price: listing[2],
+      available: listing[3]
+    }
+  }
+  // Si ya es un objeto, normalizar
+  return {
+    seller: listing.seller,
+    plant_id: listing.plant_id,
+    price: listing.price,
+    available: listing.available
+  }
+}
+
 function getLocalKeypair() {
   // prefer SECRET_KEY from env-like config, otherwise localStorage secret
   try {
@@ -656,8 +678,11 @@ export async function getAllListings() {
     
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getSimulationPublicKey()
-    if (!publicKey) throw new Error('No hay cuenta disponible para simular get_all_listings')
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
     
     const account = await server.getAccount(publicKey)
     const contractOperation = contract.call('get_all_listings')
@@ -670,10 +695,12 @@ export async function getAllListings() {
       .setTimeout(30)
     
     const transaction = txBuilder.build()
+    console.log('[getAllListings] Simulando transacción...')
     const simulateResponse = await server.simulateTransaction(transaction)
+    console.log('[getAllListings] Respuesta simulación:', simulateResponse)
     
     if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[getAllListings] Error:', simulateResponse)
+      console.error('[getAllListings] Error en simulación:', simulateResponse)
       try {
         const msg = String(simulateResponse?.error || '')
         if (msg.includes('MissingValue')) {
@@ -686,26 +713,40 @@ export async function getAllListings() {
           }
           if (!retrySim.result || !retrySim.result.retval) return []
           const listingsRetry = scValToNative(retrySim.result.retval)
-          return Array.isArray(listingsRetry) ? listingsRetry : []
+          console.log('[getAllListings] Listings tras init:', Array.isArray(listingsRetry) ? listingsRetry.length : 0)
+          if (Array.isArray(listingsRetry)) {
+            const normalized = listingsRetry.map(l => normalizeListing(l))
+            return normalized
+          }
+          return []
         }
       } catch (_) {}
       return []
     }
     
     if (!simulateResponse.result || !simulateResponse.result.retval) {
+      console.warn('[getAllListings] No hay retval en la respuesta')
       return []
     }
     
     try {
       const listings = scValToNative(simulateResponse.result.retval)
-      console.log('[getAllListings] Listings cargados:', Array.isArray(listings) ? listings.length : 0)
-      return Array.isArray(listings) ? listings : []
+      console.log('[getAllListings] Listings convertidos:', listings)
+      console.log('[getAllListings] Total listings:', Array.isArray(listings) ? listings.length : 0)
+      
+      // Normalizar cada listing
+      if (Array.isArray(listings)) {
+        const normalized = listings.map(l => normalizeListing(l))
+        console.log('[getAllListings] Listings normalizados:', normalized)
+        return normalized
+      }
+      return []
     } catch (e) {
-      console.error('[getAllListings] Error al convertir:', e)
+      console.error('[getAllListings] Error al convertir scVal:', e)
       return []
     }
   } catch (e) {
-    console.error('[getAllListings] Error:', e)
+    console.error('[getAllListings] Error general:', e.message || e)
     return []
   }
 }
@@ -897,38 +938,25 @@ export function getConnectedPublicKey() {
   return null
 }
 
-// Fallback robusto para simulaciones read-only: usa cuenta conectada, local o SECRET_KEY del config
-function getSimulationPublicKey() {
-  const pk = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
-  if (pk) return pk
-  try {
-    if (SECRET_KEY) {
-      return Keypair.fromSecret(SECRET_KEY).publicKey()
-    }
-  } catch (_) {}
-  // Último recurso: evitar usar cuenta aleatoria que no existe on-chain
-  return null
-}
-
 export async function listForSale(plantId, price) {
   // Contract signature: list_for_sale(plant_id: String, seller: Address, price: i128)
   const publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
   if (!publicKey) throw new Error('No hay cuenta conectada para listar planta')
   
-  // Permitir precios decimales convirtiendo a enteros de mínima unidad (2 decimales)
-  const priceFloat = typeof price === 'number' ? price : parseFloat(String(price))
-  if (isNaN(priceFloat) || priceFloat <= 0) throw new Error('Precio inválido')
-  const priceNum = Math.round(priceFloat * 100) // usar 2 decimales como unidades mínimas
+  // Validar y usar precio como número directamente (sin conversión decimal)
+  const priceNum = typeof price === 'number' ? price : parseFloat(String(price))
+  if (isNaN(priceNum) || priceNum <= 0) throw new Error('Precio inválido')
   
   console.log('[listForSale] Listando planta:', plantId, 'precio:', priceNum, 'vendedor:', publicKey)
   
   const resp = await submitOperation({ 
     contractId: CONTRACT_ADDRESS, 
     method: 'list_for_sale', 
-    args: [plantId, publicKey, priceNum] 
+    args: [plantId, publicKey, Math.floor(priceNum)] 
   })
   
-  return { success: true, plantId, price: priceNum, transactionHash: resp?.hash || 'pending' }
+  console.log('[listForSale] Respuesta de contrato:', resp)
+  return { success: true, plantId, price: Math.floor(priceNum), transactionHash: resp?.hash || 'pending' }
 }
 
 export async function buyListing(plantId) {
@@ -954,8 +982,11 @@ export async function getListing(plantId) {
 
     const server = new rpc.Server(RPC_URL)
     const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getSimulationPublicKey()
-    if (!publicKey) throw new Error('No hay cuenta disponible para simular get_listing')
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
 
     const account = await server.getAccount(publicKey)
     const args = [nativeToScVal(plantId, { type: 'string' })]
