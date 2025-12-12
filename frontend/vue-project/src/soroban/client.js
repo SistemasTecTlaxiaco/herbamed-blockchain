@@ -397,72 +397,58 @@ export async function submitOperation(operation = {}) {
   return result
 }
 
-// Storage de plantas locales (no blockchain)
-const PLANTS_STORAGE_KEY = 'herbamed_plants'
+// Storage de plantas LOCALES (backup temporal)
+const PLANTS_STORAGE_KEY = 'herbamed_plants_backup'
 
-function getLocalPlants() {
+function getLocalPlantsBackup() {
   if (typeof window === 'undefined' || !window.localStorage) return []
   try {
     const stored = window.localStorage.getItem(PLANTS_STORAGE_KEY)
     return stored ? JSON.parse(stored) : []
   } catch (e) {
-    console.error('[getLocalPlants] Error parsing storage:', e)
+    console.error('[getLocalPlantsBackup] Error parsing storage:', e)
     return []
   }
 }
 
-function saveLocalPlants(plants) {
+function saveLocalPlantsBackup(plants) {
   if (typeof window === 'undefined' || !window.localStorage) return
   try {
     window.localStorage.setItem(PLANTS_STORAGE_KEY, JSON.stringify(plants))
   } catch (e) {
-    console.error('[saveLocalPlants] Error saving to storage:', e)
+    console.error('[saveLocalPlantsBackup] Error saving to storage:', e)
   }
 }
 
 export async function registerPlant(plantData) {
-  // Register plant LOCALLY (no blockchain transaction)
-  // Plantas: almacenamiento local
-  // Compra/Venta: transacciones blockchain reales
+  // Register plant EN EL BLOCKCHAIN via contract
+  // Contract signature: register_plant(id: String, name: String, scientific_name: String, properties: Vec<String>)
   const plant = plantData || {}
   const id = plant.id || `PLANT-${Date.now()}`
   const name = plant.name || ''
   const scientificName = plant.scientificName || plant.scientific_name || ''
   const properties = Array.isArray(plant.properties) ? plant.properties.filter(p => p.trim()) : []
   
-  console.log('[registerPlant] Registrando planta localmente:', { id, name, scientificName, properties })
+  console.log('[registerPlant] Enviando al blockchain:', { id, name, scientificName, properties })
   
-  // Crear objeto de planta
-  const newPlant = {
-    id,
-    name,
-    scientificName,
-    properties,
-    registeredAt: new Date().toISOString(),
-    owner: getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : 'UNKNOWN'),
-    validated: false
-  }
+  // Enviar transacción REAL al blockchain
+  const resp = await submitOperation({ 
+    contractId: CONTRACT_ADDRESS, 
+    method: 'register_plant', 
+    args: [id, name, scientificName, properties] 
+  })
   
-  // Obtener plantas existentes
-  let plants = getLocalPlants()
+  const status = (resp?.status || 'PENDING').toUpperCase()
+  // Aceptar SUCCESS o PENDING como éxito
+  const success = status === 'SUCCESS' || status === 'PENDING'
   
-  // Verificar si ya existe
-  if (plants.find(p => p.id === id)) {
-    throw new Error(`La planta con ID "${id}" ya está registrada`)
-  }
+  console.log('[registerPlant] ✅ Transacción enviada al blockchain')
   
-  // Agregar nueva planta
-  plants.push(newPlant)
-  saveLocalPlants(plants)
-  
-  console.log('[registerPlant] ✅ Planta registrada localmente')
-  
-  // Retornar sin hash (no es una transacción blockchain)
   return {
-    success: true,
-    status: 'LOCAL',
+    success,
+    status,
     plantId: id,
-    transactionHash: null // Sin hash porque no es transacción blockchain
+    transactionHash: resp?.hash || (success ? 'pending' : null)
   }
 }
 
@@ -490,12 +476,90 @@ export function getStellarExplorerLink(txHash) {
 }
 
 export async function getAllPlants() {
-  // Obtener plantas del almacenamiento local (no blockchain)
-  console.log('[getAllPlants] Cargando plantas desde almacenamiento local...')
+  // Query contract for all registered plants using get_all_plants()
   try {
-    const plants = getLocalPlants()
-    console.log('[getAllPlants] Plantas cargadas:', plants.length)
-    return plants
+    console.log('[getAllPlants] Consultando plantas desde el blockchain...')
+    
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      // Use dummy keypair for read-only query
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const contractOperation = contract.call('get_all_plants')
+    
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    console.log('[getAllPlants] Simulando transacción...')
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getAllPlants] Error en simulación:', simulateResponse)
+      return []
+    }
+    
+    console.log('[getAllPlants] Simulación exitosa')
+    
+    if (!simulateResponse.result || !simulateResponse.result.retval) {
+      console.warn('[getAllPlants] Sin resultado en simulación')
+      return []
+    }
+    
+    const result = simulateResponse.result.retval
+    console.log('[getAllPlants] Resultado ScVal:', JSON.stringify(result, null, 2))
+
+    // Normaliza posibles formatos devueltos por scValToNative
+    const normalizePlant = (p) => {
+      if (!p) return null
+      if (Array.isArray(p)) {
+        return {
+          id: p[0] || '',
+          name: p[1] || '',
+          scientific_name: p[2] || '',
+          properties: Array.isArray(p[3]) ? p[3] : [],
+          validated: Boolean(p[4]),
+          validator: p[5] || ''
+        }
+      }
+      if (typeof p === 'object') return p
+      return null
+    }
+
+    try {
+      const plants = scValToNative(result)
+      console.log('[getAllPlants] Plantas convertidas:', plants)
+
+      if (Array.isArray(plants) && plants.length > 0) {
+        const normalized = plants.map(normalizePlant).filter(Boolean)
+        console.log('[getAllPlants] Plantas cargadas desde blockchain:', normalized.length)
+        return normalized
+      }
+
+      // Fallback: decodificar manualmente cada elemento del vector
+      const rawVec = result?._attributes?.vec || []
+      if (rawVec.length) {
+        const decoded = rawVec.map((scv) => scValToNative(scv))
+        const normalized = decoded.map(normalizePlant).filter(Boolean)
+        console.log('[getAllPlants] Plantas cargadas (fallback):', normalized.length)
+        return normalized
+      }
+
+      console.warn('[getAllPlants] Resultado vacío')
+      return []
+    } catch (convertError) {
+      console.error('[getAllPlants] Error al convertir ScVal:', convertError)
+      return []
+    }
   } catch (e) {
     console.error('[getAllPlants] Error:', e)
     return []
@@ -503,19 +567,74 @@ export async function getAllPlants() {
 }
 
 export async function getPlant(plantId) {
-  // Obtener planta del almacenamiento local (no blockchain)
+  // Query contract for specific plant (read-only from blockchain)
+  // Contract signature: get_plant(id: String) -> Option<MedicinalPlant>
   try {
-    console.log('[getPlant] Consultando planta:', plantId)
-    const plants = getLocalPlants()
-    const plant = plants.find(p => p.id === plantId)
+    console.log('[getPlant] Consultando planta del blockchain:', plantId)
     
-    if (!plant) {
-      console.log('[getPlant] Planta no encontrada:', plantId)
+    // Para queries read-only, usamos simulación sin firmar/enviar
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      console.warn('[getPlant] No hay cuenta conectada, generando dummy')
+      // Usar cuenta dummy para query si no hay cuenta conectada
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const args = [nativeToScVal(plantId, {type: 'string'})]
+    
+    const contractOperation = contract.call('get_plant', ...args)
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getPlant] Simulation error:', simulateResponse)
       return null
     }
     
-    console.log('[getPlant] Planta encontrada:', plant)
-    return plant
+    // Parse result from simulation
+    if (!simulateResponse.result || !simulateResponse.result.retval) {
+      console.warn('[getPlant] Sin resultado en simulación')
+      return null
+    }
+    
+    const result = simulateResponse.result.retval
+    const normalizePlant = (plant) => {
+      if (plant === null || plant === undefined) return null
+      if (Array.isArray(plant)) {
+        return {
+          id: plant[0] || '',
+          name: plant[1] || '',
+          scientific_name: plant[2] || '',
+          properties: Array.isArray(plant[3]) ? plant[3] : [],
+          validated: Boolean(plant[4]),
+          validator: plant[5] || ''
+        }
+      }
+      if (typeof plant === 'object' && plant !== null) return plant
+      return null
+    }
+
+    // El contrato retorna Option<MedicinalPlant>
+    try {
+      const plant = scValToNative(result)
+      console.log('[getPlant] Planta encontrada en blockchain:', plant)
+      const normalized = normalizePlant(plant)
+      return normalized
+    } catch (convertError) {
+      console.error('[getPlant] Error al convertir ScVal:', convertError)
+      return null
+    }
   } catch (e) {
     console.error('[getPlant] Error:', e)
     return null
