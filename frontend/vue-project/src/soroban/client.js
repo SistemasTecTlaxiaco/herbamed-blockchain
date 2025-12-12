@@ -487,6 +487,50 @@ export async function initContract() {
   }
 }
 
+export async function getValidators() {
+  // Query contract for validators list (read-only)
+  try {
+    console.log('[getValidators] Consultando validadores...')
+    
+    const server = new rpc.Server(RPC_URL)
+    const contract = new Contract(CONTRACT_ADDRESS)
+    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
+    
+    if (!publicKey) {
+      publicKey = Keypair.random().publicKey()
+    }
+    
+    const account = await server.getAccount(publicKey)
+    const contractOperation = contract.call('get_validators')
+    
+    const txBuilder = new TransactionBuilder(account, {
+      fee: stellar.BASE_FEE,
+      networkPassphrase
+    })
+      .addOperation(contractOperation)
+      .setTimeout(30)
+    
+    const transaction = txBuilder.build()
+    const simulateResponse = await server.simulateTransaction(transaction)
+    
+    if (rpc.Api.isSimulationError(simulateResponse)) {
+      console.error('[getValidators] Error:', simulateResponse)
+      throw new Error(String(simulateResponse?.error || 'Simulation error'))
+    }
+    
+    if (!simulateResponse.result || !simulateResponse.result.retval) {
+      return []
+    }
+    
+    const validators = scValToNative(simulateResponse.result.retval)
+    console.log('[getValidators] Validadores:', validators)
+    return Array.isArray(validators) ? validators : []
+  } catch (e) {
+    console.error('[getValidators] Error:', e)
+    throw e
+  }
+}
+
 // Helper to get Stellar Expert link
 export function getStellarExplorerLink(txHash) {
   const network = NETWORK === 'testnet' ? 'testnet' : 'public'
@@ -704,20 +748,9 @@ export async function getAllListings() {
       try {
         const msg = String(simulateResponse?.error || '')
         if (msg.includes('MissingValue')) {
-          console.warn('[getAllListings] MissingValue detectado, ejecutando init y reintentando...')
-          await initContract()
-          const retrySim = await server.simulateTransaction(transaction)
-          if (rpc.Api.isSimulationError(retrySim)) {
-            console.error('[getAllListings] Error tras init:', retrySim)
-            return []
-          }
-          if (!retrySim.result || !retrySim.result.retval) return []
-          const listingsRetry = scValToNative(retrySim.result.retval)
-          console.log('[getAllListings] Listings tras init:', Array.isArray(listingsRetry) ? listingsRetry.length : 0)
-          if (Array.isArray(listingsRetry)) {
-            const normalized = listingsRetry.map(l => normalizeListing(l))
-            return normalized
-          }
+          console.warn('[getAllListings] MissingValue detectado - contrato no inicializado')
+          console.warn('[getAllListings] Debes inicializar el contrato primero llamando a initContract()')
+          console.warn('[getAllListings] Retornando array vacío por ahora')
           return []
         }
       } catch (_) {}
@@ -1053,6 +1086,7 @@ export default {
   submitTx,
   submitOperation,
   initContract,
+  getValidators,
   registerPlant,
   getAllPlants,
   getAllListings,

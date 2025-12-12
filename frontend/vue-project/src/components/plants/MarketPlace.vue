@@ -298,9 +298,44 @@ export default {
       return `${address.slice(0, 6)}...${address.slice(-4)}`
     }
     
-    onMounted(() => {
+    const ensureContractInitialized = async () => {
+      try {
+        console.log('[MarketPlace] Verificando si contrato está inicializado...')
+        // Intentar obtener validadores como prueba de inicialización
+        const validators = await soroban.getValidators()
+        if (validators && validators.length >= 0) {
+          console.log('[MarketPlace] ✅ Contrato ya inicializado')
+          return true
+        }
+      } catch (error) {
+        const msg = String(error?.message || error || '')
+        if (msg.includes('MissingValue')) {
+          console.warn('[MarketPlace] ⚠️ Contrato no inicializado, ejecutando init...')
+          try {
+            await soroban.initContract()
+            console.log('[MarketPlace] ✅ Contrato inicializado exitosamente')
+            // Esperar un momento para que se confirme
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return true
+          } catch (initError) {
+            console.error('[MarketPlace] ❌ Error al inicializar contrato:', initError)
+            status.value = {
+              type: 'warning',
+              message: '⚠️ El contrato blockchain necesita inicialización. Por favor, recarga la página en unos segundos.'
+            }
+            return false
+          }
+        }
+      }
+      return true
+    }
+    
+    onMounted(async () => {
       console.log('[MarketPlace] Componente montado')
-      loadListings()
+      const initialized = await ensureContractInitialized()
+      if (initialized) {
+        loadListings()
+      }
     })
     
     return {
