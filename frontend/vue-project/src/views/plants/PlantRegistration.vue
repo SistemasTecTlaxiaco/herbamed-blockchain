@@ -2,31 +2,16 @@
   <div class="container mt-4">
     <h2>Registro de Plantas Medicinales</h2>
     
-    <!-- Alert de éxito con enlace a Stellar Explorer -->
-    <div v-if="transactionHash && transactionHash !== 'pending'" class="alert alert-success alert-dismissible fade show" role="alert">
+    <!-- Alert de éxito -->
+    <div v-if="registeredPlantId && !registrationFailed" class="alert alert-success alert-dismissible fade show" role="alert">
       <h5 class="alert-heading">✅ Planta registrada exitosamente!</h5>
       <p class="mb-2"><strong>ID:</strong> {{ registeredPlantId }}</p>
-      <hr>
-      <p class="mb-2">
-        <strong>Hash de Transacción:</strong><br>
-        <code class="text-dark">{{ transactionHash }}</code>
-      </p>
+      <p class="mb-2"><strong>Nombre:</strong> {{ registeredPlantName }}</p>
       <p class="mb-0">
-        <a :href="explorerLink" target="_blank" class="btn btn-sm btn-outline-primary">
-          Ver en Stellar Expert →
-        </a>
-        <small class="d-block mt-2 text-muted">
-          ⏱️ La transacción puede tardar unos segundos en aparecer en el explorador.
+        <small class="text-muted">
+          📝 La planta ha sido registrada en tu almacenamiento local. Podrás listarla para venta cuando lo desees.
         </small>
       </p>
-      <button type="button" class="btn-close" @click="clearSuccess"></button>
-    </div>
-    
-    <!-- Alert cuando está pendiente -->
-    <div v-else-if="transactionHash === 'pending'" class="alert alert-warning alert-dismissible fade show" role="alert">
-      <h5 class="alert-heading">⏳ Transacción enviada...</h5>
-      <p class="mb-0"><strong>ID:</strong> {{ registeredPlantId }}</p>
-      <p class="mb-0"><small>La transacción está siendo procesada. Esto puede tardar unos segundos.</small></p>
       <button type="button" class="btn-close" @click="clearSuccess"></button>
     </div>
     
@@ -102,15 +87,9 @@ export default {
       properties: ['']
     })
     const loading = ref(false)
-    const transactionHash = ref('')
     const registeredPlantId = ref('')
-    
-    // Computed para generar el enlace de Stellar Explorer
-    const explorerLink = computed(() => {
-      return transactionHash.value 
-        ? soroban.getStellarExplorerLink(transactionHash.value)
-        : ''
-    })
+    const registeredPlantName = ref('')
+    const registrationFailed = ref(false)
     
     const addProperty = () => {
       plant.value.properties.push('')
@@ -121,29 +100,31 @@ export default {
     }
     
     const clearSuccess = () => {
-      transactionHash.value = ''
       registeredPlantId.value = ''
+      registeredPlantName.value = ''
+      registrationFailed.value = false
     }
     
     const registerPlant = async () => {
       try {
         loading.value = true
+        registrationFailed.value = false
         console.log('[PlantRegistration] Registrando planta...')
         const result = await soroban.registerPlant({
           id: plant.value.id,
           name: plant.value.name,
           scientificName: plant.value.scientificName,
-          properties: plant.value.properties
+          properties: plant.value.properties.filter(p => p.trim())
         })
         console.log('[PlantRegistration] Planta registrada:', result.plantId, 'status:', result.status)
 
         if (!result.success) {
-          throw new Error('La transacción no se confirmó. Intenta de nuevo en unos segundos.')
+          throw new Error('No se pudo registrar la planta. Verifica los datos e intenta de nuevo.')
         }
 
         // Guardar datos para mostrar el alert de éxito
-        transactionHash.value = result.transactionHash || 'pending'
         registeredPlantId.value = result.plantId
+        registeredPlantName.value = plant.value.name
         
         // Limpiar formulario
         plant.value = {
@@ -160,6 +141,7 @@ export default {
         
       } catch (error) {
         console.error('[PlantRegistration] Error al registrar planta:', error)
+        registrationFailed.value = true
         alert('Error al registrar la planta: ' + error.message)
       } finally {
         loading.value = false
@@ -183,9 +165,9 @@ export default {
     return {
       plant,
       loading,
-      transactionHash,
       registeredPlantId,
-      explorerLink,
+      registeredPlantName,
+      registrationFailed,
       addProperty,
       removeProperty,
       registerPlant,

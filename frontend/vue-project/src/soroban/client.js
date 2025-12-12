@@ -397,30 +397,72 @@ export async function submitOperation(operation = {}) {
   return result
 }
 
+// Storage de plantas locales (no blockchain)
+const PLANTS_STORAGE_KEY = 'herbamed_plants'
+
+function getLocalPlants() {
+  if (typeof window === 'undefined' || !window.localStorage) return []
+  try {
+    const stored = window.localStorage.getItem(PLANTS_STORAGE_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch (e) {
+    console.error('[getLocalPlants] Error parsing storage:', e)
+    return []
+  }
+}
+
+function saveLocalPlants(plants) {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  try {
+    window.localStorage.setItem(PLANTS_STORAGE_KEY, JSON.stringify(plants))
+  } catch (e) {
+    console.error('[saveLocalPlants] Error saving to storage:', e)
+  }
+}
+
 export async function registerPlant(plantData) {
-  // Register plant in blockchain via contract
-  // Contract signature: register_plant(id: String, name: String, scientific_name: String, properties: Vec<String>)
+  // Register plant LOCALLY (no blockchain transaction)
+  // Plantas: almacenamiento local
+  // Compra/Venta: transacciones blockchain reales
   const plant = plantData || {}
   const id = plant.id || `PLANT-${Date.now()}`
   const name = plant.name || ''
   const scientificName = plant.scientificName || plant.scientific_name || ''
-  const properties = Array.isArray(plant.properties) ? plant.properties : []
+  const properties = Array.isArray(plant.properties) ? plant.properties.filter(p => p.trim()) : []
   
-  console.log('[registerPlant] Enviando:', { id, name, scientificName, properties })
+  console.log('[registerPlant] Registrando planta localmente:', { id, name, scientificName, properties })
   
-  const resp = await submitOperation({ 
-    contractId: CONTRACT_ADDRESS, 
-    method: 'register_plant', 
-    args: [id, name, scientificName, properties] 
-  })
-  const status = (resp?.status || 'PENDING').toUpperCase()
-  // Aceptar SUCCESS o PENDING como éxito (la transacción está siendo procesada)
-  const success = status === 'SUCCESS' || status === 'PENDING'
+  // Crear objeto de planta
+  const newPlant = {
+    id,
+    name,
+    scientificName,
+    properties,
+    registeredAt: new Date().toISOString(),
+    owner: getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : 'UNKNOWN'),
+    validated: false
+  }
+  
+  // Obtener plantas existentes
+  let plants = getLocalPlants()
+  
+  // Verificar si ya existe
+  if (plants.find(p => p.id === id)) {
+    throw new Error(`La planta con ID "${id}" ya está registrada`)
+  }
+  
+  // Agregar nueva planta
+  plants.push(newPlant)
+  saveLocalPlants(plants)
+  
+  console.log('[registerPlant] ✅ Planta registrada localmente')
+  
+  // Retornar sin hash (no es una transacción blockchain)
   return {
-    success,
-    status,
+    success: true,
+    status: 'LOCAL',
     plantId: id,
-    transactionHash: resp?.hash || (success ? 'pending' : null)
+    transactionHash: null // Sin hash porque no es transacción blockchain
   }
 }
 
@@ -448,141 +490,12 @@ export function getStellarExplorerLink(txHash) {
 }
 
 export async function getAllPlants() {
-  // Query contract for all registered plants using get_all_plants()
+  // Obtener plantas del almacenamiento local (no blockchain)
+  console.log('[getAllPlants] Cargando plantas desde almacenamiento local...')
   try {
-    console.log('[getAllPlants] Consultando todas las plantas desde el contrato...')
-    
-    const server = new rpc.Server(RPC_URL)
-    const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
-    
-    if (!publicKey) {
-      // Use dummy keypair for read-only query
-      publicKey = Keypair.random().publicKey()
-    }
-    
-    const account = await server.getAccount(publicKey)
-    const contractOperation = contract.call('get_all_plants')
-    
-    const txBuilder = new TransactionBuilder(account, {
-      fee: stellar.BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contractOperation)
-      .setTimeout(30)
-    
-    const transaction = txBuilder.build()
-    console.log('[getAllPlants] Simulando transacción...')
-    const simulateResponse = await server.simulateTransaction(transaction)
-    
-    if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[getAllPlants] Error en simulación:', simulateResponse)
-      // Intentar inicializar el contrato si falta estado
-      const errorMsg = JSON.stringify(simulateResponse)
-      if (errorMsg.includes('MissingValue')) {
-        console.warn('[getAllPlants] MissingValue detectado, ejecutando init y reintentando...')
-        try {
-          await initContract()
-          // Esperar un poco para que la transacción se confirme
-          await new Promise(r => setTimeout(r, 3000))
-          // Reintentar con nueva cuenta (refresh)
-          const newAccount = await server.getAccount(publicKey)
-          const newOp = contract.call('get_all_plants')
-          const newTx = new TransactionBuilder(newAccount, {
-            fee: stellar.BASE_FEE,
-            networkPassphrase
-          })
-            .addOperation(newOp)
-            .setTimeout(30)
-            .build()
-          const retrySim = await server.simulateTransaction(newTx)
-          if (rpc.Api.isSimulationError(retrySim)) {
-            console.error('[getAllPlants] Error tras init:', retrySim)
-            return []
-          }
-          // Procesar resultado del retry
-          if (!retrySim.result || !retrySim.result.retval) return []
-          const result = retrySim.result.retval
-          const normalizePlant = (p) => {
-            if (!p) return null
-            if (Array.isArray(p)) {
-              return {
-                id: p[0] || '',
-                name: p[1] || '',
-                scientific_name: p[2] || '',
-                properties: Array.isArray(p[3]) ? p[3] : [],
-                validated: Boolean(p[4]),
-                validator: p[5] || ''
-              }
-            }
-            if (typeof p === 'object') return p
-            return null
-          }
-          const plantsRetry = scValToNative(result)
-          if (Array.isArray(plantsRetry)) {
-            return plantsRetry.map(normalizePlant).filter(Boolean)
-          }
-          return []
-        } catch (initError) {
-          console.error('[getAllPlants] Error al inicializar contrato:', initError)
-          return []
-        }
-      }
-      return []
-    }
-    
-    console.log('[getAllPlants] Simulación exitosa')
-    
-    if (!simulateResponse.result || !simulateResponse.result.retval) {
-      console.warn('[getAllPlants] Sin resultado en simulación')
-      return []
-    }
-    
-    const result = simulateResponse.result.retval
-    console.log('[getAllPlants] Resultado ScVal:', JSON.stringify(result, null, 2))
-
-    // Normaliza posibles formatos devueltos por scValToNative
-    const normalizePlant = (p) => {
-      if (!p) return null
-      if (Array.isArray(p)) {
-        return {
-          id: p[0] || '',
-          name: p[1] || '',
-          scientific_name: p[2] || '',
-          properties: Array.isArray(p[3]) ? p[3] : [],
-          validated: Boolean(p[4]),
-          validator: p[5] || ''
-        }
-      }
-      if (typeof p === 'object') return p
-      return null
-    }
-
-    try {
-      const plants = scValToNative(result)
-      console.log('[getAllPlants] Plantas convertidas (scValToNative):', plants)
-
-      if (Array.isArray(plants) && plants.length > 0) {
-        const normalized = plants.map(normalizePlant).filter(Boolean)
-        console.log('[getAllPlants] Plantas cargadas:', normalized.length)
-        return normalized
-      }
-
-      // Fallback: decodificar manualmente cada elemento del vector
-      const rawVec = result?._attributes?.vec || []
-      if (rawVec.length) {
-        const decoded = rawVec.map((scv) => scValToNative(scv))
-        const normalized = decoded.map(normalizePlant).filter(Boolean)
-        console.log('[getAllPlants] Plantas cargadas (fallback):', normalized.length)
-        return normalized
-      }
-
-      console.warn('[getAllPlants] Resultado vacío o no convertible')
-      return []
-    } catch (convertError) {
-      console.error('[getAllPlants] Error al convertir ScVal:', convertError)
-      return []
-    }
+    const plants = getLocalPlants()
+    console.log('[getAllPlants] Plantas cargadas:', plants.length)
+    return plants
   } catch (e) {
     console.error('[getAllPlants] Error:', e)
     return []
@@ -590,86 +503,19 @@ export async function getAllPlants() {
 }
 
 export async function getPlant(plantId) {
-  // Query contract for specific plant (read-only)
-  // Contract signature: get_plant(id: String) -> Option<MedicinalPlant>
+  // Obtener planta del almacenamiento local (no blockchain)
   try {
     console.log('[getPlant] Consultando planta:', plantId)
+    const plants = getLocalPlants()
+    const plant = plants.find(p => p.id === plantId)
     
-    // Para queries read-only, usamos simulación sin firmar/enviar
-    const server = new rpc.Server(RPC_URL)
-    const contract = new Contract(CONTRACT_ADDRESS)
-    let publicKey = getConnectedPublicKey() || (getLocalKeypair() ? getLocalKeypair().publicKey() : null)
-    
-    if (!publicKey) {
-      console.warn('[getPlant] No hay cuenta conectada, generando dummy')
-      // Usar cuenta dummy para query si no hay cuenta conectada
-      publicKey = Keypair.random().publicKey()
-    }
-    
-    const account = await server.getAccount(publicKey)
-    const args = [nativeToScVal(plantId, {type: 'string'})]
-    
-    console.log('[getPlant] Args convertidos:', args)
-    
-    const contractOperation = contract.call('get_plant', ...args)
-    const txBuilder = new TransactionBuilder(account, {
-      fee: stellar.BASE_FEE,
-      networkPassphrase
-    })
-      .addOperation(contractOperation)
-      .setTimeout(30)
-    
-    const transaction = txBuilder.build()
-    console.log('[getPlant] Simulando transacción...')
-    const simulateResponse = await server.simulateTransaction(transaction)
-    
-    if (rpc.Api.isSimulationError(simulateResponse)) {
-      console.error('[getPlant] Simulation error:', simulateResponse)
+    if (!plant) {
+      console.log('[getPlant] Planta no encontrada:', plantId)
       return null
     }
     
-    console.log('[getPlant] Simulación exitosa')
-    
-    // Parse result from simulation
-    if (!simulateResponse.result || !simulateResponse.result.retval) {
-      console.warn('[getPlant] Sin resultado en simulación')
-      return null
-    }
-    
-    const result = simulateResponse.result.retval
-    console.log('[getPlant] Resultado ScVal:', JSON.stringify(result, null, 2))
-
-    const normalizePlant = (plant) => {
-      if (plant === null || plant === undefined) return null
-      if (Array.isArray(plant)) {
-        return {
-          id: plant[0] || '',
-          name: plant[1] || '',
-          scientific_name: plant[2] || '',
-          properties: Array.isArray(plant[3]) ? plant[3] : [],
-          validated: Boolean(plant[4]),
-          validator: plant[5] || ''
-        }
-      }
-      if (typeof plant === 'object' && plant !== null) return plant
-      return null
-    }
-
-    // El contrato retorna Option<MedicinalPlant>
-    try {
-      const plant = scValToNative(result)
-      console.log('[getPlant] Planta convertida:', plant)
-      const normalized = normalizePlant(plant)
-      if (!normalized) {
-        console.log('[getPlant] Planta no encontrada (Option::None)')
-        return null
-      }
-      console.log('[getPlant] Planta encontrada:', normalized)
-      return normalized
-    } catch (convertError) {
-      console.error('[getPlant] Error al convertir ScVal:', convertError)
-      return null
-    }
+    console.log('[getPlant] Planta encontrada:', plant)
+    return plant
   } catch (e) {
     console.error('[getPlant] Error:', e)
     return null
